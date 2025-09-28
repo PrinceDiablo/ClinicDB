@@ -35,45 +35,56 @@ CREATE TABLE IF NOT EXISTS "licences" (
  
 ---- Person Details and related Tables ----
 
-CREATE TABLE IF NOT EXISTS "people" (
+CREATE TABLE IF NOT EXISTS "user_details" (
     "id" INTEGER,
     "name" TEXT,
-    "age" INTEGER,
-    "gender" TEXT,
-    "parmanent_address" TEXT,
+    "dob" TEXT,
+    "gender" TEXT CHECK("gender" IN ('male','female','other','prefer_not_to_say')),
+    "permanent_address" TEXT,
     "temp_address" TEXT,
-    "primary_contact_no" TEXT UNIQUE,
+    "primary_contact_no" TEXT NOT NULL UNIQUE,
     "secondary_contact_no" TEXT,
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY("id")
 );
 
+CREATE TABLE IF NOT EXISTS "authenticate_users" (
+    "id" INTEGER,
+    "user_id" INTEGER NOT NULL UNIQUE,
+    "email" TEXT NOT NULL UNIQUE,
+    "password_hash" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'active' CHECK ("status" IN ('active','inactive')),
+    "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY("id"),
+    FOREIGN KEY("user_id") REFERENCES "user_details"("id")
+);
+
 CREATE TABLE IF NOT EXISTS "gov_documents" (
     "id" INTEGER,
-    "person_id" INTEGER,
-    "card_name" TEXT,
-    "card_number" TEXT UNIQUE,
+    "user_id" INTEGER NOT NULL,
+    "card_name" TEXT NOT NULL,
+    "card_number" TEXT UNIQUE NOT NULL,
     "card_photo" BLOB,
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY("id"),
-    FOREIGN KEY("person_id") REFERENCES "people"("id")
+    FOREIGN KEY("user_id") REFERENCES "user_details"("id")
 );
 
 CREATE TABLE IF NOT EXISTS "education_certificates" (
     "id" INTEGER,
-    "person_id" INTEGER,
+    "user_id" INTEGER,
     "school_name" TEXT,
     "course_name" TEXT,
     "certificate_details" TEXT,
     "certificate_id" TEXT UNIQUE,
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY("id"),
-    FOREIGN KEY("person_id") REFERENCES "people"("id")
+    FOREIGN KEY("user_id") REFERENCES "user_details"("id")
 );
 
 CREATE TABLE IF NOT EXISTS "bank_details" (
     "id" INTEGER,
-    "person_id" INTEGER,
+    "user_id" INTEGER,
     "bank_ac_holder_name" TEXT NOT NULL,
     "bank_ac_number" TEXT NOT NULL UNIQUE,
     "bank_name" TEXT NOT NULL,
@@ -81,14 +92,14 @@ CREATE TABLE IF NOT EXISTS "bank_details" (
     "bank_branch" TEXT NOT NULL,
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY("id"),
-    FOREIGN KEY("person_id") REFERENCES "people"("id")
+    FOREIGN KEY("user_id") REFERENCES "user_details"("id")
 );
 
 ---- Staff Details  ----
 
 CREATE TABLE IF NOT EXISTS "staffs" (
     "id" INTEGER,
-    "person_id" INTEGER NOT NULL,
+    "user_id" INTEGER NOT NULL,
     "entity_id" INTEGER NOT NULL,
     "role" TEXT NOT NULL CHECK ("role" IN ('manager','pharmacist','receptionist','technician')),
     "join_date" TEXT,
@@ -97,14 +108,14 @@ CREATE TABLE IF NOT EXISTS "staffs" (
     "review" TEXT,
     "status" TEXT NOT NULL DEFAULT 'active' CHECK ("status" IN ('active','inactive')),
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE("person_id","entity_id"),
+    UNIQUE("user_id","entity_id"),
     PRIMARY KEY("id"),
     FOREIGN KEY("entity_id") REFERENCES "entities"("id"),
-    FOREIGN KEY("person_id") REFERENCES "people"("id")
+    FOREIGN KEY("user_id") REFERENCES "user_details"("id")
 );
 
 -- Staff Attendence Records
-CREATE TABLE IF NOT EXISTS "staff_attendence_records" (
+CREATE TABLE IF NOT EXISTS "staff_attendance_records" (
     "id" INTEGER,
     "staff_id" INTEGER,
     "in_date_time_stamp" TEXT,
@@ -119,15 +130,15 @@ CREATE TABLE IF NOT EXISTS "staff_and_entity_logs" (
     "id" INTEGER,
     "action" TEXT NOT NULL CHECK ("action" IN ('ADD','UPDATE','DELETE')),
     "time_stamp" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "staff_id" INTEGER NOT NULL,
-    "entity_id" INTEGER NOT NULL,
+    "staff_id" INTEGER,
+    "entity_id" INTEGER,
     "role" TEXT NOT NULL,
     "salary" INTEGER,
-    "rating" INTEGER,
+    "rating" INTEGER CHECK("rating" <= 5),
     "review" TEXT,
     PRIMARY KEY("id"),
-    FOREIGN KEY("entity_id") REFERENCES "entities"("id"),
-    FOREIGN KEY("staff_id") REFERENCES "staffs"("id")
+    FOREIGN KEY("entity_id") REFERENCES "entities"("id") ON DELETE SET NULL,
+    FOREIGN KEY("staff_id") REFERENCES "staffs"("id") ON DELETE SET NULL
 );
 
 CREATE TRIGGER IF NOT EXISTS "trg_new_staff"
@@ -158,16 +169,16 @@ CREATE TRIGGER IF NOT EXISTS "trg_delete_staff"
 
 CREATE TABLE IF NOT EXISTS "doctors" (
     "id" INTEGER,
-    "person_id" INTEGER NOT NULL,
+    "user_id" INTEGER NOT NULL,
     "entity_id" INTEGER NOT NULL,
-    "reg_no" TEXT,
+    "reg_no" TEXT NOT NULL UNIQUE,
     "specialty" TEXT,
     "consultation_fees" INTEGER,
     "entity_commission" INTEGER,
     "status" TEXT NOT NULL DEFAULT 'active' CHECK ("status" IN ('active','inactive')),
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY("id"),
-    FOREIGN KEY("person_id") REFERENCES "people"("id"),
+    FOREIGN KEY("user_id") REFERENCES "user_details"("id"),
     FOREIGN KEY("entity_id") REFERENCES "entities"("id")
 );
 
@@ -176,7 +187,7 @@ CREATE TABLE IF NOT EXISTS "doctor_time_slots" (
     "doctor_id" INTEGER NOT NULL,
     "date" TEXT NOT NULL,
     "time_slot" INTEGER NOT NULL,
-    "appointments_per_slot" INTEGER NOT NULL CHECK("appointments_per_slot > 0"),
+    "appointments_per_slot" INTEGER NOT NULL CHECK("appointments_per_slot" > 0),
     PRIMARY KEY("id"),
     FOREIGN KEY("doctor_id") REFERENCES "doctors"("id")
 );
@@ -185,11 +196,11 @@ CREATE TABLE IF NOT EXISTS "doctor_time_slots" (
 
 CREATE TABLE IF NOT EXISTS "patients" (
     "id" INTEGER,
-    "person_id" INTEGER,
+    "user_id" INTEGER,
     "clinic_id" INTEGER,
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY("id"),
-    FOREIGN KEY("person_id") REFERENCES "people"("id"),
+    FOREIGN KEY("user_id") REFERENCES "user_details"("id"),
     FOREIGN KEY("clinic_id") REFERENCES "entities"("id")
 );
 
@@ -197,21 +208,21 @@ CREATE TABLE IF NOT EXISTS "patients" (
 
 CREATE TABLE IF NOT EXISTS "appointments" (
     "id" INTEGER,
-    "patient_id" INTEGER,
-    "doctor_id" INTEGER,
-    "appointment_date_time" TEXT,
+    "patient_id" INTEGER NOT NULL,
+    "doctor_time_slot_id" INTEGER NOT NULL,
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE("patient_id", "doctor_time_slot_id"),
     PRIMARY KEY("id"),
     FOREIGN KEY("patient_id") REFERENCES "patients"("id"),
-    FOREIGN KEY("doctor_id") REFERENCES "doctors"("id")
+    FOREIGN KEY("doctor_time_slot_id") REFERENCES "doctor_time_slots"("id")
 );
 
 ---- Prescription Details and related Tables ----
 
 CREATE TABLE IF NOT EXISTS "prescriptions" (
     "id" INTEGER,
-    "patient_id" INTEGER,
-    "doctor_id" INTEGER,
+    "patient_id" INTEGER NOT NULL,
+    "doctor_id" INTEGER NOT NULL,
     "prescription" Blob,
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY("id"),
@@ -221,8 +232,8 @@ CREATE TABLE IF NOT EXISTS "prescriptions" (
 
 CREATE TABLE IF NOT EXISTS "prescribed_products" (
     "id" INTEGER,
-    "prescription_id" INTEGER,
-    "product_id" INTEGER,
+    "prescription_id" INTEGER NOT NULL,
+    "product_id" INTEGER NOT NULL,
     PRIMARY KEY("id"),
     FOREIGN KEY("prescription_id") REFERENCES "prescriptions"("id"),
     FOREIGN KEY("product_id") REFERENCES "products"("id")
@@ -230,8 +241,8 @@ CREATE TABLE IF NOT EXISTS "prescribed_products" (
 
 CREATE TABLE IF NOT EXISTS "prescribed_tests" (
     "id" INTEGER,
-    "prescription_id" INTEGER,
-    "test_id" INTEGER,
+    "prescription_id" INTEGER NOT NULL,
+    "test_id" INTEGER NOT NULL,
     PRIMARY KEY("id"),
     FOREIGN KEY("prescription_id") REFERENCES "prescriptions"("id"),
     FOREIGN KEY("test_id") REFERENCES "tests"("id")
@@ -259,8 +270,8 @@ CREATE TABLE IF NOT EXISTS "test_records" (
     "test_end_date_time" TEXT,
     "report" BLOB,
     "report_by_doctor_id" INTEGER NOT NULL,
-    "mrp" INTEGER,
-    "rate" INTEGER,
+    "mrp" DECIMAL,
+    "rate" DECIMAL,
     "recorded_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY("id"),
     FOREIGN KEY("prescribed_tests_id") REFERENCES "prescribed_tests"("id"),
@@ -314,15 +325,15 @@ CREATE TABLE IF NOT EXISTS "purchase_lines" (
     "line_no" INTEGER NOT NULL DEFAULT 1,
     "product_id" INTEGER NOT NULL,
     "batch_no" TEXT NOT NULL,
-    "exp_date" TEXT NOT NULL,
-    "rate" INTEGER NOT NULL,
-    "mrp" INTEGER NOT NULL,
+    "exp_date" TEXT,
+    "rate" DECIMAL NOT NULL,
+    "mrp" DECIMAL NOT NULL,
     "quantity" INTEGER NOT NULL CHECK("quantity" > 0),
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE("header_id","line_no"),
     UNIQUE("header_id","product_id","batch_no"),
     PRIMARY KEY("id"),
-    FOREIGN KEY("header_id")  REFERENCES "purchase_headers"("id") ON DELETE CASCADE,
+    FOREIGN KEY("header_id")  REFERENCES "purchase_headers"("id"),
     FOREIGN KEY("product_id") REFERENCES "products"("id")
 );
 
@@ -335,13 +346,15 @@ CREATE TABLE IF NOT EXISTS "sales" (
     "product_id" INTEGER NOT NULL,
     "batch_no" TEXT NOT NULL,    
     "quantity" INTEGER NOT NULL CHECK ("quantity" > 0),
-    "rate" INTEGER,
-    "mrp" INTEGER,
+    "rate" DECIMAL NOT NULL,
+    "mrp" DECIMAL NOT NULL,
     "sold_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY("id"),
+    "sold_by" INTEGER NOT NULL,
+    PRIMARY KEY("id"), 
     FOREIGN KEY("pharmacy_id") REFERENCES "entities"("id"),
     FOREIGN KEY("prescription_id") REFERENCES "prescriptions"("id"),
-    FOREIGN KEY("product_id") REFERENCES "products"("id")
+    FOREIGN KEY("product_id") REFERENCES "products"("id"),
+    FOREIGN KEY("sold_by") REFERENCES "user_details"("id")
 );
 
 ---- Inventory Details ----
@@ -355,21 +368,25 @@ CREATE TABLE IF NOT EXISTS "inventory_ledger" (
     "source_type" TEXT NOT NULL CHECK ("source_type" IN ('PURCHASE','SALE','ADJUSTMENT')),
     "source_id" INTEGER,
     "quantity_delta" INTEGER NOT NULL,
-    "rate" INTEGER NOT NULL,
-    "mrp" INTEGER NOT NULL,
+    "rate" DECIMAL NOT NULL,
+    "mrp" DECIMAL NOT NULL,
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY("id"),
     FOREIGN KEY("pharmacy_id") REFERENCES "entities"("id"),
     FOREIGN KEY("product_id") REFERENCES "products"("id")
 );
+
 -- Manual Inventory Adjustments
 CREATE TABLE IF NOT EXISTS "inventory_adjustments" (
   "id" INTEGER,
   "pharmacy_id" INTEGER NOT NULL,
   "product_id" INTEGER NOT NULL,
   "batch_no" TEXT NOT NULL,
+  "exp_date" TEXT,
   "reason" TEXT,
   "quantity_delta" INTEGER NOT NULL,
+  "rate" DECIMAL NOT NULL,
+  "mrp" DECIMAL NOT NULL,
   "adjusted_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY("id"),
   FOREIGN KEY("pharmacy_id") REFERENCES "entities"("id"),
@@ -425,11 +442,27 @@ CREATE TRIGGER "trg_adjustment_to_ledger"
 AFTER INSERT ON "inventory_adjustments"
 FOR EACH ROW
 BEGIN
-  INSERT INTO "inventory_ledger"("pharmacy_id","product_id","batch_no","source_type","source_id","quantity_delta")
-  VALUES (NEW."pharmacy_id", NEW."product_id", NEW."batch_no", 'ADJUSTMENT', NEW."id", NEW."quantity_delta");
+  INSERT INTO "inventory_ledger"("pharmacy_id","product_id","batch_no", "exp_date", "source_type","source_id","quantity_delta", "rate", "mrp")
+  VALUES (NEW."pharmacy_id", NEW."product_id", NEW."batch_no", NEW."exp_date", 'ADJUSTMENT', NEW."id", NEW."quantity_delta", NEW."rate", NEW."mrp");
 END;
 
 ---- Views ----
+
+CREATE VIEW IF NOT EXISTS "view_doctor_schedule" AS
+SELECT ts.id AS "time_slot_id", d.id AS "doctor_id", ud.name AS "doctor_name", 
+       d.entity_id AS "clinic_id", ts.date, ts.time_slot, 
+       ts.appointments_per_slot, COALESCE(a.booked, 0) AS "booked",
+       (ts.appointments_per_slot - COALESCE(a.booked, 0)) AS "remaining"
+  FROM "doctor_time_slots" AS "ts"
+  JOIN "doctors" AS "d"
+    ON d.id = ts.doctor_id
+  JOIN "user_details" AS "ud"
+    ON ud.id = d.user_id
+    LEFT JOIN (
+        SELECT doctor_time_slot, COUNT(*) AS "booked"
+          FROM appointments
+            GROUP BY "doctor_time_slot_id"
+    ) AS "a" ON a.doctor_time_slot_id = ts.id;
 
 -- Stock View
 CREATE VIEW IF NOT EXISTS "view_current_stock" AS
@@ -443,20 +476,23 @@ HAVING SUM("quantity_delta") <> 0;
 CREATE UNIQUE INDEX IF NOT EXISTS "ux_entities_name_kind"
     ON "entities"("name","kind_id");
 CREATE UNIQUE INDEX IF NOT EXISTS "ux_doctors_person"
-    ON "doctors"("person_id");
+    ON "doctors"("user_id", "entity_id");
 CREATE UNIQUE INDEX IF NOT EXISTS "ux_patients_person"
-    ON "patients"("person_id");
+    ON "patients"("user_id", "clinic_id");
 CREATE UNIQUE INDEX IF NOT EXISTS "ux_doctor_time_slot"
     ON "doctor_time_slots"("doctor_id","date","time_slot");
+CREATE UNIQUE INDEX IF NOT EXISTS "ux_appointments"
+    ON "appointments"("patient_id", "doctor_time_slot_id");
 CREATE UNIQUE INDEX IF NOT EXISTS "ux_prescribed_tests"
     ON "prescribed_tests"("prescription_id","test_id");
 CREATE UNIQUE INDEX IF NOT EXISTS "ux_prescribed_products"
     ON "prescribed_products"("prescription_id","product_id");
 
 CREATE INDEX IF NOT EXISTS "idx_licences_entity"  ON "licences"("entity_id");
-CREATE INDEX IF NOT EXISTS "idx_doctors_clinic"   ON "doctors"("clinic_id");
+CREATE INDEX IF NOT EXISTS "idx_doctors_clinic"   ON "doctors"("entity_id");
+CREATE INDEX IF NOT EXISTS "idx_appt_slot"        ON "appointments"("doctor_time_slot_id");
 CREATE INDEX IF NOT EXISTS "idx_staffs_entity"    ON "staffs"("entity_id");
-CREATE INDEX IF NOT EXISTS "idx_staffs_person"    ON "staffs"("person_id");
+CREATE INDEX IF NOT EXISTS "idx_staffs_person"    ON "staffs"("user_id");
 CREATE INDEX IF NOT EXISTS "idx_patients_clinic"  ON "patients"("clinic_id");
 CREATE INDEX IF NOT EXISTS "idx_presc_patient"    ON "prescriptions"("patient_id");
 CREATE INDEX IF NOT EXISTS "idx_presc_doctor"     ON "prescriptions"("doctor_id");
