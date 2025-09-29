@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS "user_details" (
 CREATE TABLE IF NOT EXISTS "authenticate_users" (
     "id" INTEGER,
     "user_id" INTEGER NOT NULL UNIQUE,
-    "email" TEXT NOT NULL UNIQUE,
+    "email" TEXT NOT NULL COLLATE NOCASE UNIQUE,
     "password_hash" TEXT NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'active' CHECK ("status" IN ('active','inactive')),
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -432,7 +432,7 @@ BEGIN
         WHERE ph."pharmacy_id" = NEW."pharmacy_id"
           AND pl."product_id" = NEW."product_id"
           AND pl."batch_no" = NEW."batch_no"
-            ORDER BY ph."invoice_date" DESC, pl."id" DESC 
+        ORDER BY ph."invoice_date" DESC, pl."id" DESC 
         LIMIT 1),
       'SALE', NEW."id", -NEW."quantity", NEW."rate", NEW."mrp"
     );
@@ -448,6 +448,7 @@ END;
 
 ---- Views ----
 
+-- Doctor schedule with capacity
 CREATE VIEW IF NOT EXISTS "view_doctor_schedule" AS
 SELECT ts.id AS "time_slot_id", d.id AS "doctor_id", ud.name AS "doctor_name", 
        d.entity_id AS "clinic_id", ts.date, ts.time_slot, 
@@ -458,18 +459,162 @@ SELECT ts.id AS "time_slot_id", d.id AS "doctor_id", ud.name AS "doctor_name",
     ON d.id = ts.doctor_id
   JOIN "user_details" AS "ud"
     ON ud.id = d.user_id
-    LEFT JOIN (
-        SELECT doctor_time_slot, COUNT(*) AS "booked"
-          FROM appointments
-            GROUP BY "doctor_time_slot_id"
+  LEFT JOIN (
+    SELECT "doctor_time_slot_id", COUNT(*) AS "booked"
+      FROM "appointments"
+     GROUP BY "doctor_time_slot_id"
     ) AS "a" ON a.doctor_time_slot_id = ts.id;
 
--- Stock View
+-- Upcoming appointments
+CREATE VIEW IF NOT EXISTS "view_upcoming_appointments" AS 
+SELECT ap.id AS "appointment_id", ts.date, ts.time_slot, p.id AS "patient_id",
+       up.name AS "patient_name", d.id AS "doctor_id", ud.name AS "doctor_name",
+       d.entity_id AS "clinic_id", e.name AS "clinic_name", ap.created_at
+  FROM "appointments" AS "ap"
+  JOIN "doctor_time_slots" AS "ts"
+    ON ts.id = ap.doctor_time_slot_id
+  JOIN "patients" AS "p"
+    ON p.id = ap.patient_id
+  JOIN "user_details" AS "up"
+    ON up.id = p.user_id
+  JOIN "doctors" AS "d"
+    ON d.id = ts.doctor_id
+  JOIN "user_details" AS "ud" 
+    ON ud.id = d.user_id
+  JOIN "entities" AS "e" 
+    ON e.id = d.entity_id
+ WHERE ts.date >= DATE('now')
+ ORDER BY ts.date, ts.time_slot;
+
+-- Patient prescription history
+CREATE VIEW IF NOT EXISTS "view_patient_prescription_history" AS
+SELECT pr.id AS "prescription_id", pr.created_at, p.id AS "patient_id",
+       up.name AS "patient_name",d.id AS "doctor_id", ud.name AS "doctor_name"
+  FROM "prescriptions" AS "pr"
+  JOIN "patients" AS "p"
+    ON p.id = pr.patient_id
+  JOIN "user_details" AS "up"
+    ON up.id = p.user_id
+  JOIN "doctors" AS "d"
+    ON d.id = pr.doctor_id
+  JOIN "user_details" AS "ud"
+    ON ud.id = d.user_id
+ ORDER BY pr.created_at DESC;
+
+-- Prescription items
+CREATE VIEW IF NOT EXISTS "view_prescription_items" AS
+SELECT pr.id AS "prescription_id", pdt.id AS "prescribed_product_id",
+       prod.id AS "product_id", prod.name AS "product_name", prod.tax_rate, prod.schedule
+  FROM "prescribed_products" AS "pdt"
+  JOIN "prescriptions" AS "pr" 
+    ON pr.id = pdt.prescription_id
+  JOIN "products" AS "prod" 
+    ON prod.id = pdt.product_id; 
+
+-- Current stock
 CREATE VIEW IF NOT EXISTS "view_current_stock" AS
 SELECT "pharmacy_id", "product_id", "batch_no", SUM("quantity_delta") AS "quantity"
   FROM "inventory_ledger"
-    GROUP BY "pharmacy_id", "product_id", "batch_no"
+ GROUP BY "pharmacy_id", "product_id", "batch_no"
 HAVING SUM("quantity_delta") <> 0;
+
+-- Current stock by batch with attributes (exp_date, rate, mrp)
+CREATE VIEW IF NOT EXISTS "view_stock_by_batch" AS
+SELECT vcs."pharmacy_id", vcs."product_id", vcs."batch_no", vcs."quantity",
+  (
+    SELECT pl."exp_date"
+      FROM "purchase_lines" AS pl
+      JOIN "purchase_headers" AS ph
+        ON ph."id" = pl."header_id"
+     WHERE ph."pharmacy_id" = vcs."pharmacy_id"
+       AND pl."product_id"  = vcs."product_id"
+       AND pl."batch_no"     = vcs."batch_no"
+     ORDER BY ph."invoice_date" DESC, pl."id" DESC
+     LIMIT 1
+  ) AS "exp_date",
+  (
+    SELECT pl."rate"
+      FROM "purchase_lines" AS pl
+      JOIN "purchase_headers" AS ph
+        ON ph."id" = pl."header_id"
+     WHERE ph."pharmacy_id" = vcs."pharmacy_id"
+       AND pl."product_id"  = vcs."product_id"
+       AND pl."batch_no"     = vcs."batch_no"
+     ORDER BY ph."invoice_date" DESC, pl."id" DESC
+     LIMIT 1
+  ) AS "rate",
+  (
+    SELECT pl."mrp"
+      FROM "purchase_lines" AS pl
+      JOIN "purchase_headers" AS ph
+        ON ph."id" = pl."header_id"
+     WHERE ph."pharmacy_id" = vcs."pharmacy_id"
+       AND pl."product_id"  = vcs."product_id"
+       AND pl."batch_no"     = vcs."batch_no"
+     ORDER BY ph."invoice_date" DESC, pl."id" DESC
+     LIMIT 1
+  ) AS "mrp"
+FROM "view_current_stock" AS vcs;
+
+-- Product-level totals across batches
+CREATE VIEW IF NOT EXISTS "view_product_stock_totals" AS
+SELECT "pharmacy_id", "product_id", SUM("quantity") AS "total_quantity"
+  FROM "view_stock_by_batch"
+ GROUP BY "pharmacy_id", "product_id";
+
+-- Expiring batches (next 30 days)
+CREATE VIEW IF NOT EXISTS "view_expiring_batches_30d" AS
+SELECT *
+  FROM "view_stock_by_batch"
+ WHERE "quantity" > 0
+   AND "exp_date" IS NOT NULL
+   AND DATE("exp_date") <= DATE('now', '+30 day');
+
+-- Low stock (threshold 10)
+CREATE VIEW IF NOT EXISTS "view_low_stock" AS
+SELECT *
+  FROM "view_current_stock"
+ WHERE "quantity" <= 10
+    ORDER BY "quantity" ASC;
+
+-- Lab test status
+CREATE VIEW IF NOT EXISTS "view_lab_test_status" AS
+SELECT pt.id AS "prescribed_test_id", t.name AS "test_name", pr.id AS "prescription_id",
+       p.id AS "patient_id", up.name AS "patient_name", d.id AS "doctor_id", 
+       ud.name AS "doctor_name", tr.lab_id, tr.collection_date_time, 
+       tr.test_start_date_time, tr.test_end_date_time,
+  CASE
+    WHEN tr.id IS NULL THEN 'PENDING'
+    WHEN tr.test_end_date_time IS NULL THEN 'IN-PROGRESS'
+    ELSE 'COMPLETED'
+  END AS "status"
+  FROM "prescribed_tests" AS "pt"
+  JOIN "tests" AS "t"
+    ON t.id = pt.test_id
+  JOIN "prescriptions" AS "pr"
+    ON pr.id = pt.prescription_id
+  JOIN "patients" AS "p"
+    ON p.id = pr.patient_id
+  JOIN "user_details" AS "up"
+    ON up.id = p.user_id
+  JOIN "doctors" AS "d"
+    ON d.id = pr.doctor_id
+  JOIN "user_details" AS "ud"
+    ON ud.id = d.user_id
+  LEFT JOIN "test_records" AS "tr" 
+    ON tr.prescribed_tests_id = pt.id;
+
+-- Staff current check-in (today)
+CREATE VIEW IF NOT EXISTS "view_staff_checked_in_today" AS
+SELECT sar.id AS "attendance_id", s.id AS "staff_id", u.name AS "staff_name",
+       s.entity_id AS "clinic_id", sar.in_date_time_stamp
+  FROM "staff_attendance_records" AS "sar"
+  JOIN "staffs" AS s
+    ON s.id = sar.staff_id
+  JOIN "user_details" AS "u" 
+    ON u.id = s.user_id
+ WHERE sar.out_date_time_stamp IS NULL
+   AND DATE(sar.in_date_time_stamp) = DATE('now');
 
 ---- Uniqueness and performance indexes ----
 
@@ -488,19 +633,26 @@ CREATE UNIQUE INDEX IF NOT EXISTS "ux_prescribed_tests"
 CREATE UNIQUE INDEX IF NOT EXISTS "ux_prescribed_products"
     ON "prescribed_products"("prescription_id","product_id");
 
-CREATE INDEX IF NOT EXISTS "idx_licences_entity"  ON "licences"("entity_id");
-CREATE INDEX IF NOT EXISTS "idx_doctors_clinic"   ON "doctors"("entity_id");
-CREATE INDEX IF NOT EXISTS "idx_appt_slot"        ON "appointments"("doctor_time_slot_id");
-CREATE INDEX IF NOT EXISTS "idx_staffs_entity"    ON "staffs"("entity_id");
-CREATE INDEX IF NOT EXISTS "idx_staffs_person"    ON "staffs"("user_id");
-CREATE INDEX IF NOT EXISTS "idx_patients_clinic"  ON "patients"("clinic_id");
-CREATE INDEX IF NOT EXISTS "idx_presc_patient"    ON "prescriptions"("patient_id");
-CREATE INDEX IF NOT EXISTS "idx_presc_doctor"     ON "prescriptions"("doctor_id");
-CREATE INDEX IF NOT EXISTS "idx_test_records_lab" ON "test_records"("lab_id");
-CREATE INDEX IF NOT EXISTS "idx_ph_hdr_pharmacy"  ON "purchase_headers"("pharmacy_id");
-CREATE INDEX IF NOT EXISTS "idx_pl_hdr"           ON "purchase_lines"("header_id");
-CREATE INDEX IF NOT EXISTS "idx_pl_header_line"   ON "purchase_lines"("header_id","line_no");
-CREATE INDEX IF NOT EXISTS "idx_pl_prod_batch"    ON "purchase_lines"("product_id","batch_no");
-CREATE INDEX IF NOT EXISTS "idx_ledger_ppb"       ON "inventory_ledger"("pharmacy_id","product_id","batch_no");
-CREATE INDEX IF NOT EXISTS "idx_sales_ppb"        ON "sales"("pharmacy_id","product_id","batch_no");
+CREATE INDEX IF NOT EXISTS "idx_licences_entity"    ON "licences"("entity_id");
+CREATE INDEX IF NOT EXISTS "idx_doctors_clinic"     ON "doctors"("entity_id");
+CREATE INDEX IF NOT EXISTS "idx_appt_slot"          ON "appointments"("doctor_time_slot_id");
+CREATE INDEX IF NOT EXISTS "idx_staffs_entity"      ON "staffs"("entity_id");
+CREATE INDEX IF NOT EXISTS "idx_staffs_person"      ON "staffs"("user_id");
+CREATE INDEX IF NOT EXISTS "idx_staff_att_staff"    ON "staff_attendance_records"("staff_id");
+CREATE INDEX IF NOT EXISTS "idx_patients_clinic"    ON "patients"("clinic_id");
+CREATE INDEX IF NOT EXISTS "idx_presc_patient"      ON "prescriptions"("patient_id");
+CREATE INDEX IF NOT EXISTS "idx_presc_doctor"       ON "prescriptions"("doctor_id");
+CREATE INDEX IF NOT EXISTS "idx_tr_lab"             ON "test_records"("lab_id");
+CREATE INDEX IF NOT EXISTS "idx_tr_ptid"            ON "test_records"("prescribed_tests_id");
+CREATE INDEX IF NOT EXISTS "idx_tr_report_doctor"   ON "test_records"("report_by_doctor_id");
+CREATE INDEX IF NOT EXISTS "idx_ph_hdr_pharmacy"    ON "purchase_headers"("pharmacy_id");
+CREATE INDEX IF NOT EXISTS "idx_pl_hdr"             ON "purchase_lines"("header_id");
+CREATE INDEX IF NOT EXISTS "idx_pl_header_line"     ON "purchase_lines"("header_id","line_no");
+CREATE INDEX IF NOT EXISTS "idx_pl_prod_batch"      ON "purchase_lines"("product_id","batch_no");
+CREATE INDEX IF NOT EXISTS "idx_pl_hdr_pb"          ON "purchase_lines"("header_id", "product_id", "batch_no");
+CREATE INDEX IF NOT EXISTS "idx_ledger_ppb"         ON "inventory_ledger"("pharmacy_id","product_id","batch_no");
+CREATE INDEX IF NOT EXISTS "idx_sales_ppb"          ON "sales"("pharmacy_id","product_id","batch_no");
+CREATE INDEX IF NOT EXISTS "idx_sales_presc"        ON "sales"("prescription_id");
+CREATE INDEX IF NOT EXISTS "idx_sales_sold_by"      ON "sales"("sold_by");
+CREATE INDEX IF NOT EXISTS "idx_sales_sold_at"      ON "sales"("sold_at");
 
