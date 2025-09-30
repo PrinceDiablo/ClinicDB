@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS "bank_details" (
 
 ---- Staff Details  ----
 
-CREATE TABLE IF NOT EXISTS "staffs" (
+CREATE TABLE IF NOT EXISTS "staff" (
     "id" INTEGER,
     "user_id" INTEGER NOT NULL,
     "entity_id" INTEGER NOT NULL,
@@ -106,22 +106,25 @@ CREATE TABLE IF NOT EXISTS "staffs" (
     "salary" INTEGER NOT NULL,
     "rating" INTEGER CHECK ("rating" BETWEEN 0 AND 5),
     "review" TEXT,
+    "cause" TEXT NOT NULL DEFAULT 'recruitment' CHECK("cause" IN('promotion', 'demotion', 'salary_hike', 'termination', 'resignation','recruitment')),
     "status" TEXT NOT NULL DEFAULT 'active' CHECK ("status" IN ('active','inactive')),
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "created_by" INTEGER,
     UNIQUE("user_id","entity_id"),
     PRIMARY KEY("id"),
     FOREIGN KEY("entity_id") REFERENCES "entities"("id"),
-    FOREIGN KEY("user_id") REFERENCES "user_details"("id")
+    FOREIGN KEY("user_id") REFERENCES "user_details"("id"),
+    FOREIGN KEY("created_by") REFERENCES "staff"("id")
 );
 
--- Staff Attendence Records
+-- Staff Attendance Records
 CREATE TABLE IF NOT EXISTS "staff_attendance_records" (
     "id" INTEGER,
     "staff_id" INTEGER,
     "in_date_time_stamp" TEXT,
     "out_date_time_stamp" TEXT,
     PRIMARY KEY("id"),
-    FOREIGN KEY("staff_id") REFERENCES "staffs"("id")
+    FOREIGN KEY("staff_id") REFERENCES "staff"("id")
 );
 
 ---- Staff logs and trigger conditions ----
@@ -129,41 +132,57 @@ CREATE TABLE IF NOT EXISTS "staff_attendance_records" (
 CREATE TABLE IF NOT EXISTS "staff_and_entity_logs" (
     "id" INTEGER,
     "action" TEXT NOT NULL CHECK ("action" IN ('ADD','UPDATE','DELETE')),
-    "time_stamp" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "staff_id" INTEGER,
     "entity_id" INTEGER,
     "role" TEXT NOT NULL,
     "salary" INTEGER,
-    "rating" INTEGER CHECK("rating" <= 5),
+    "rating" INTEGER,
+    "cause" TEXT NOT NULL CHECK("cause" IN('promotion', 'demotion', 'salary_hike', 'termination', 'resignation','recruitment')),
     "review" TEXT,
+    "status" TEXT NOT NULL,
+    "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "created_by" INTEGER,
     PRIMARY KEY("id"),
-    FOREIGN KEY("entity_id") REFERENCES "entities"("id") ON DELETE SET NULL,
-    FOREIGN KEY("staff_id") REFERENCES "staffs"("id") ON DELETE SET NULL
+    FOREIGN KEY("entity_id") REFERENCES "entities"("id"),
+    FOREIGN KEY("staff_id") REFERENCES "staff"("id"),
+    FOREIGN KEY("created_by") REFERENCES "staff"("id")
 );
 
 CREATE TRIGGER IF NOT EXISTS "trg_new_staff"
-    AFTER INSERT ON "staffs"
-    FOR EACH ROW
-    BEGIN
-        INSERT INTO "staff_and_entity_logs" ("action","staff_id", "entity_id", "role", "salary", "rating", "review")
-        VALUES ('ADD', NEW."id", NEW."entity_id", NEW."role", NEW."salary", NEW."rating", NEW."review");
-    END;
+  AFTER INSERT ON "staff"
+  FOR EACH ROW
+  BEGIN
+    INSERT INTO "staff_and_entity_logs" ("action","staff_id", "entity_id", "role", "salary", "rating", "cause", "review", "status", "created_by")
+    VALUES ('ADD', NEW."id", NEW."entity_id", NEW."role", NEW."salary", NEW."rating", COALESCE(NEW."cause", 'recruitment'), NEW."review", NEW."status", NEW."created_by");
+  END;
 
 CREATE TRIGGER IF NOT EXISTS "trg_update_staff"
-    BEFORE UPDATE ON "staffs"
-    FOR EACH ROW
-    BEGIN
-        INSERT INTO "staff_and_entity_logs" ("action", "staff_id", "entity_id", "role", "salary", "rating", "review")
-        VALUES ('UPDATE', NEW."id", NEW."entity_id", NEW."role", NEW."salary", NEW."rating", NEW."review");
-    END;
+  BEFORE UPDATE OF "role", "salary", "rating", "review" ON "staff"
+  FOR EACH ROW
+  BEGIN
+    SELECT CASE WHEN NEW."cause" IS NULL THEN RAISE(ABORT,'cause required for staff update') END;
+    INSERT INTO "staff_and_entity_logs" ("action", "staff_id", "entity_id", "role", "salary", "rating", "cause", "review", "status", "created_by")
+    VALUES ('UPDATE', NEW."id", NEW."entity_id", NEW."role", NEW."salary", NEW."rating", NEW."cause", NEW."review", NEW."status", NEW."created_by");
+  END;
 
-CREATE TRIGGER IF NOT EXISTS "trg_delete_staff"
-    BEFORE DELETE ON "staffs"
-    FOR EACH ROW
-    BEGIN
-        INSERT INTO "staff_and_entity_logs" ("action","staff_id", "entity_id", "role", "salary", "rating", "review")
-        VALUES ('DELETE', OLD."id", OLD."entity_id", OLD."role", OLD."salary", OLD."rating", OLD."review");
-    END;
+-- Block hard deletes
+CREATE TRIGGER IF NOT EXISTS "trg_block_delete_staff"
+  BEFORE DELETE ON "staff"
+  FOR EACH ROW
+  BEGIN
+    SELECT RAISE(ABORT, 'Use status=inactive for soft delete');
+  END;
+
+-- Log soft delete
+CREATE TRIGGER IF NOT EXISTS "trg_soft_delete_staff"
+  BEFORE UPDATE OF "status" ON "staff"
+  FOR EACH ROW
+  WHEN OLD."status" = 'active' AND NEW."status" = 'inactive'
+  BEGIN
+    SELECT CASE WHEN NEW."cause" IS NULL THEN RAISE(ABORT,'cause required for soft delete') END;
+    INSERT INTO "staff_and_entity_logs" ("action","staff_id","entity_id","role","salary","rating","cause","review","status","created_by")
+    VALUES ('DELETE', NEW."id", NEW."entity_id", NEW."role", NEW."salary", NEW."rating", NEW."cause", NEW."review", NEW."status", NEW."created_by");
+  END;
 
 ---- Doctor's Details ----
 
@@ -177,9 +196,11 @@ CREATE TABLE IF NOT EXISTS "doctors" (
     "entity_commission" INTEGER,
     "status" TEXT NOT NULL DEFAULT 'active' CHECK ("status" IN ('active','inactive')),
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "created_by" INTEGER NOT NULL,
     PRIMARY KEY("id"),
     FOREIGN KEY("user_id") REFERENCES "user_details"("id"),
-    FOREIGN KEY("entity_id") REFERENCES "entities"("id")
+    FOREIGN KEY("entity_id") REFERENCES "entities"("id"),
+    FOREIGN KEY("created_by") REFERENCES "staff"("id")
 );
 
 CREATE TABLE IF NOT EXISTS "doctor_time_slots" (
@@ -199,9 +220,11 @@ CREATE TABLE IF NOT EXISTS "patients" (
     "user_id" INTEGER,
     "clinic_id" INTEGER,
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "created_by" INTEGER NOT NULL,
     PRIMARY KEY("id"),
     FOREIGN KEY("user_id") REFERENCES "user_details"("id"),
-    FOREIGN KEY("clinic_id") REFERENCES "entities"("id")
+    FOREIGN KEY("clinic_id") REFERENCES "entities"("id"),
+    FOREIGN KEY("created_by") REFERENCES "staff"("id")
 );
 
 ---- Appointment Details ----
@@ -211,11 +234,14 @@ CREATE TABLE IF NOT EXISTS "appointments" (
     "patient_id" INTEGER NOT NULL,
     "doctor_time_slot_id" INTEGER NOT NULL,
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "created_by" INTEGER NOT NULL,
     UNIQUE("patient_id", "doctor_time_slot_id"),
     PRIMARY KEY("id"),
     FOREIGN KEY("patient_id") REFERENCES "patients"("id"),
-    FOREIGN KEY("doctor_time_slot_id") REFERENCES "doctor_time_slots"("id")
+    FOREIGN KEY("doctor_time_slot_id") REFERENCES "doctor_time_slots"("id"),
+    FOREIGN KEY("created_by") REFERENCES "staff"("id")
 );
+
 
 ---- Prescription Details and related Tables ----
 
@@ -224,6 +250,7 @@ CREATE TABLE IF NOT EXISTS "prescriptions" (
     "patient_id" INTEGER NOT NULL,
     "doctor_id" INTEGER NOT NULL,
     "prescription" Blob,
+    "note" TEXT,
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY("id"),
     FOREIGN KEY("patient_id") REFERENCES "patients"("id"),
@@ -257,7 +284,9 @@ CREATE TABLE IF NOT EXISTS "tests" (
     "picture" BLOB,
     "status" TEXT NOT NULL DEFAULT 'active' CHECK ("status" IN ('active','inactive')),
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY("id")
+    "created_by" INTEGER NOT NULL,
+    PRIMARY KEY("id"),
+    FOREIGN KEY("created_by") REFERENCES "staff"("id")
 );
 
 -- Test Records
@@ -273,10 +302,12 @@ CREATE TABLE IF NOT EXISTS "test_records" (
     "mrp" DECIMAL,
     "rate" DECIMAL,
     "recorded_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "recorded_by" INTEGER NOT NULL,
     PRIMARY KEY("id"),
     FOREIGN KEY("prescribed_tests_id") REFERENCES "prescribed_tests"("id"),
     FOREIGN KEY("lab_id") REFERENCES "entities"("id"),
-    FOREIGN KEY("report_by_doctor_id") REFERENCES "doctors"("id")
+    FOREIGN KEY("report_by_doctor_id") REFERENCES "doctors"("id"),
+    FOREIGN KEY("recorded_by") REFERENCES "staff"("id")
 );
 
 ---- Product Details and related Tables ----
@@ -292,8 +323,10 @@ CREATE TABLE IF NOT EXISTS "products" (
     "picture" BLOB,
     "status" TEXT NOT NULL DEFAULT 'active' CHECK ("status" IN ('active','inactive')),
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "created_by" INTEGER NOT NULL,
     PRIMARY KEY("id"),
-    FOREIGN KEY("company_id") REFERENCES "entities"("id")
+    FOREIGN KEY("company_id") REFERENCES "entities"("id"),
+    FOREIGN KEY("created_by") REFERENCES "staff"("id")
 );
 
 CREATE TABLE IF NOT EXISTS "compositions" (
@@ -313,10 +346,12 @@ CREATE TABLE IF NOT EXISTS "purchase_headers" (
     "invoice_no" TEXT NOT NULL,
     "invoice_date" TEXT NOT NULL,
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "created_by" INTEGER NOT NULL,
     UNIQUE("pharmacy_id","distributor_id","invoice_no"), 
     PRIMARY KEY("id"),
     FOREIGN KEY("pharmacy_id") REFERENCES "entities"("id"),
-    FOREIGN KEY("distributor_id") REFERENCES "entities"("id")
+    FOREIGN KEY("distributor_id") REFERENCES "entities"("id"),
+    FOREIGN KEY("created_by") REFERENCES "staff"("id")
 );
 
 CREATE TABLE IF NOT EXISTS "purchase_lines" (
@@ -330,11 +365,13 @@ CREATE TABLE IF NOT EXISTS "purchase_lines" (
     "mrp" DECIMAL NOT NULL,
     "quantity" INTEGER NOT NULL CHECK("quantity" > 0),
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "created_by" INTEGER NOT NULL,
     UNIQUE("header_id","line_no"),
     UNIQUE("header_id","product_id","batch_no"),
     PRIMARY KEY("id"),
     FOREIGN KEY("header_id")  REFERENCES "purchase_headers"("id"),
-    FOREIGN KEY("product_id") REFERENCES "products"("id")
+    FOREIGN KEY("product_id") REFERENCES "products"("id"),
+    FOREIGN KEY("created_by") REFERENCES "staff"("id")
 );
 
 ---- Sales Details ----
@@ -358,7 +395,7 @@ CREATE TABLE IF NOT EXISTS "sales" (
     FOREIGN KEY("prescription_id") REFERENCES "prescriptions"("id"),
     FOREIGN KEY("buyer_user_id") REFERENCES "user_details"("id"),
     FOREIGN KEY("product_id") REFERENCES "products"("id"),
-    FOREIGN KEY("sold_by") REFERENCES "user_details"("id")
+    FOREIGN KEY("sold_by") REFERENCES "staff"("id")
 );
 
 ---- Inventory Details ----
@@ -375,9 +412,11 @@ CREATE TABLE IF NOT EXISTS "inventory_ledger" (
     "rate" DECIMAL NOT NULL,
     "mrp" DECIMAL NOT NULL,
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "created_by" INTEGER NOT NULL,
     PRIMARY KEY("id"),
     FOREIGN KEY("pharmacy_id") REFERENCES "entities"("id"),
-    FOREIGN KEY("product_id") REFERENCES "products"("id")
+    FOREIGN KEY("product_id") REFERENCES "products"("id"),
+    FOREIGN KEY("created_by") REFERENCES "staff"("id")
 );
 
 -- Manual Inventory Adjustments
@@ -392,9 +431,11 @@ CREATE TABLE IF NOT EXISTS "inventory_adjustments" (
   "rate" DECIMAL NOT NULL,
   "mrp" DECIMAL NOT NULL,
   "adjusted_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "adjusted_by" INTEGER NOT NULL,
   PRIMARY KEY("id"),
   FOREIGN KEY("pharmacy_id") REFERENCES "entities"("id"),
-  FOREIGN KEY("product_id") REFERENCES "products"("id")
+  FOREIGN KEY("product_id") REFERENCES "products"("id"),
+  FOREIGN KEY("adjusted_by") REFERENCES "staff"("id")
 );
 
 -- Trigger: purchase -> ledger (+)
@@ -402,11 +443,11 @@ CREATE TRIGGER IF NOT EXISTS "trg_purchase_line_to_ledger"
 AFTER INSERT ON "purchase_lines"
 FOR EACH ROW
 BEGIN
-    INSERT INTO "inventory_ledger" ("pharmacy_id", "product_id", "batch_no", "exp_date", "source_type", "source_id", "quantity_delta", "rate", "mrp")
+    INSERT INTO "inventory_ledger" ("pharmacy_id", "product_id", "batch_no", "exp_date", "source_type", "source_id", "quantity_delta", "rate", "mrp", "created_by")
     VALUES ((SELECT "pharmacy_id"
                FROM "purchase_headers"
               WHERE "id" = NEW."header_id"), 
-    NEW."product_id", NEW."batch_no", NEW."exp_date", 'PURCHASE', NEW."id", NEW."quantity", NEW."rate", NEW."mrp");
+    NEW."product_id", NEW."batch_no", NEW."exp_date", 'PURCHASE', NEW."id", NEW."quantity", NEW."rate", NEW."mrp", NEW."created_by");
 END;
 
 -- Trigger: sale -> check stock then ledger (-)
@@ -427,7 +468,7 @@ BEGIN
     THEN RAISE(ABORT,'Insufficient stock')
   END;
 
-  INSERT INTO "inventory_ledger"("pharmacy_id","product_id","batch_no","exp_date","source_type","source_id","quantity_delta","rate","mrp")
+  INSERT INTO "inventory_ledger"("pharmacy_id","product_id","batch_no","exp_date","source_type","source_id","quantity_delta","rate","mrp","created_by")
   VALUES (NEW."pharmacy_id", NEW."product_id", NEW."batch_no",
       (SELECT pl."exp_date" 
          FROM "purchase_lines" AS "pl"
@@ -438,16 +479,16 @@ BEGIN
           AND pl."batch_no" = NEW."batch_no"
         ORDER BY ph."invoice_date" DESC, pl."id" DESC 
         LIMIT 1),
-      'SALE', NEW."id", -NEW."quantity", NEW."rate", NEW."mrp"
+      'SALE', NEW."id", -NEW."quantity", NEW."rate", NEW."mrp", NEW."sold_by"
     );
 END;
 
-CREATE TRIGGER "trg_adjustment_to_ledger"
+CREATE TRIGGER IF NOT EXISTS "trg_adjustment_to_ledger"
 AFTER INSERT ON "inventory_adjustments"
 FOR EACH ROW
 BEGIN
-  INSERT INTO "inventory_ledger"("pharmacy_id","product_id","batch_no", "exp_date", "source_type","source_id","quantity_delta", "rate", "mrp")
-  VALUES (NEW."pharmacy_id", NEW."product_id", NEW."batch_no", NEW."exp_date", 'ADJUSTMENT', NEW."id", NEW."quantity_delta", NEW."rate", NEW."mrp");
+  INSERT INTO "inventory_ledger"("pharmacy_id","product_id","batch_no", "exp_date", "source_type","source_id","quantity_delta", "rate", "mrp", "created_by")
+  VALUES (NEW."pharmacy_id", NEW."product_id", NEW."batch_no", NEW."exp_date", 'ADJUSTMENT', NEW."id", NEW."quantity_delta", NEW."rate", NEW."mrp", NEW."adjusted_by");
 END;
 
 ---- Views ----
@@ -572,7 +613,7 @@ SELECT *
   FROM "view_stock_by_batch"
  WHERE "quantity" > 0
    AND "exp_date" IS NOT NULL
-   AND DATE("exp_date") <= DATE('now', '+30 day');
+   AND DATE("exp_date") <= DATE('now', '+30 days');
 
 -- Low stock (threshold 10)
 CREATE VIEW IF NOT EXISTS "view_low_stock" AS
@@ -613,12 +654,19 @@ CREATE VIEW IF NOT EXISTS "view_staff_checked_in_today" AS
 SELECT sar.id AS "attendance_id", s.id AS "staff_id", u.name AS "staff_name",
        s.entity_id AS "clinic_id", sar.in_date_time_stamp
   FROM "staff_attendance_records" AS "sar"
-  JOIN "staffs" AS s
+  JOIN "staff" AS s
     ON s.id = sar.staff_id
   JOIN "user_details" AS "u" 
     ON u.id = s.user_id
  WHERE sar.out_date_time_stamp IS NULL
    AND DATE(sar.in_date_time_stamp) = DATE('now');
+
+-- Helper views for soft deletes / active rows
+CREATE VIEW IF NOT EXISTS "view_active_entities" AS
+SELECT * FROM "entities" WHERE "status" = 'active';
+
+CREATE VIEW IF NOT EXISTS "view_active_staff" AS
+SELECT * FROM "staff" WHERE "status" = 'active';
 
 -- Sales OTC or Rx
 CREATE VIEW IF NOT EXISTS "view_sales_party" AS
@@ -663,8 +711,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS "ux_prescribed_products"
 CREATE INDEX IF NOT EXISTS "idx_licences_entity"    ON "licences"("entity_id");
 CREATE INDEX IF NOT EXISTS "idx_doctors_clinic"     ON "doctors"("entity_id");
 CREATE INDEX IF NOT EXISTS "idx_appt_slot"          ON "appointments"("doctor_time_slot_id");
-CREATE INDEX IF NOT EXISTS "idx_staffs_entity"      ON "staffs"("entity_id");
-CREATE INDEX IF NOT EXISTS "idx_staffs_person"      ON "staffs"("user_id");
+CREATE INDEX IF NOT EXISTS "idx_staff_entity"       ON "staff"("entity_id");
+CREATE INDEX IF NOT EXISTS "idx_staff_person"       ON "staff"("user_id");
 CREATE INDEX IF NOT EXISTS "idx_staff_att_staff"    ON "staff_attendance_records"("staff_id");
 CREATE INDEX IF NOT EXISTS "idx_patients_clinic"    ON "patients"("clinic_id");
 CREATE INDEX IF NOT EXISTS "idx_presc_patient"      ON "prescriptions"("patient_id");
