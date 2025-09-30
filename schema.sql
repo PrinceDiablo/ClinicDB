@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS "licences" (
     FOREIGN KEY("entity_id") REFERENCES "entities"("id")
 );
  
----- Person Details and related Tables ----
+---- User Details and related Tables ----
 
 CREATE TABLE IF NOT EXISTS "user_details" (
     "id" INTEGER,
@@ -343,6 +343,7 @@ CREATE TABLE IF NOT EXISTS "sales" (
     "id" INTEGER,
     "pharmacy_id" INTEGER NOT NULL,
     "prescription_id" INTEGER,
+    "buyer_user_id" INTEGER,
     "product_id" INTEGER NOT NULL,
     "batch_no" TEXT NOT NULL,    
     "quantity" INTEGER NOT NULL CHECK ("quantity" > 0),
@@ -350,9 +351,12 @@ CREATE TABLE IF NOT EXISTS "sales" (
     "mrp" DECIMAL NOT NULL,
     "sold_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "sold_by" INTEGER NOT NULL,
+  -- Exactly one of prescription_id (Rx) or buyer_user_id (OTC) must be present
+    CHECK ( ("prescription_id" IS NOT NULL) <> ("buyer_user_id" IS NOT NULL) ),
     PRIMARY KEY("id"), 
     FOREIGN KEY("pharmacy_id") REFERENCES "entities"("id"),
     FOREIGN KEY("prescription_id") REFERENCES "prescriptions"("id"),
+    FOREIGN KEY("buyer_user_id") REFERENCES "user_details"("id"),
     FOREIGN KEY("product_id") REFERENCES "products"("id"),
     FOREIGN KEY("sold_by") REFERENCES "user_details"("id")
 );
@@ -527,8 +531,8 @@ SELECT vcs."pharmacy_id", vcs."product_id", vcs."batch_no", vcs."quantity",
       JOIN "purchase_headers" AS ph
         ON ph."id" = pl."header_id"
      WHERE ph."pharmacy_id" = vcs."pharmacy_id"
-       AND pl."product_id"  = vcs."product_id"
-       AND pl."batch_no"     = vcs."batch_no"
+       AND pl."product_id" = vcs."product_id"
+       AND pl."batch_no" = vcs."batch_no"
      ORDER BY ph."invoice_date" DESC, pl."id" DESC
      LIMIT 1
   ) AS "exp_date",
@@ -538,8 +542,8 @@ SELECT vcs."pharmacy_id", vcs."product_id", vcs."batch_no", vcs."quantity",
       JOIN "purchase_headers" AS ph
         ON ph."id" = pl."header_id"
      WHERE ph."pharmacy_id" = vcs."pharmacy_id"
-       AND pl."product_id"  = vcs."product_id"
-       AND pl."batch_no"     = vcs."batch_no"
+       AND pl."product_id" = vcs."product_id"
+       AND pl."batch_no" = vcs."batch_no"
      ORDER BY ph."invoice_date" DESC, pl."id" DESC
      LIMIT 1
   ) AS "rate",
@@ -549,8 +553,8 @@ SELECT vcs."pharmacy_id", vcs."product_id", vcs."batch_no", vcs."quantity",
       JOIN "purchase_headers" AS ph
         ON ph."id" = pl."header_id"
      WHERE ph."pharmacy_id" = vcs."pharmacy_id"
-       AND pl."product_id"  = vcs."product_id"
-       AND pl."batch_no"     = vcs."batch_no"
+       AND pl."product_id" = vcs."product_id"
+       AND pl."batch_no" = vcs."batch_no"
      ORDER BY ph."invoice_date" DESC, pl."id" DESC
      LIMIT 1
   ) AS "mrp"
@@ -616,6 +620,29 @@ SELECT sar.id AS "attendance_id", s.id AS "staff_id", u.name AS "staff_name",
  WHERE sar.out_date_time_stamp IS NULL
    AND DATE(sar.in_date_time_stamp) = DATE('now');
 
+-- Sales OTC or Rx
+CREATE VIEW IF NOT EXISTS "view_sales_party" AS
+SELECT s.id AS "sale_id", s.pharmacy_id, s.prescription_id, 
+       s.buyer_user_id, s.product_id, s.batch_no, s.quantity, 
+       s.rate, s.mrp, s.sold_at, s.sold_by,
+  CASE 
+    WHEN s."prescription_id" IS NOT NULL THEN 'Rx' 
+    ELSE 'OTC' 
+   END AS "sale_type",
+  CASE 
+    WHEN s.prescription_id IS NOT NULL THEN up.name
+    ELSE bu.name
+   END AS "party_name"
+  FROM "sales" AS "s"
+  LEFT JOIN "prescriptions" AS "pr"
+    ON pr.id = s.prescription_id
+  LEFT JOIN "patients" AS "p"
+    ON p.id = pr.patient_id
+  LEFT JOIN "user_details" AS "up"
+    ON up.id = p.user_id
+  LEFT JOIN "user_details" AS "bu"
+    ON bu.id = s.buyer_user_id;
+
 ---- Uniqueness and performance indexes ----
 
 CREATE UNIQUE INDEX IF NOT EXISTS "ux_entities_name_kind"
@@ -653,6 +680,6 @@ CREATE INDEX IF NOT EXISTS "idx_pl_hdr_pb"          ON "purchase_lines"("header_
 CREATE INDEX IF NOT EXISTS "idx_ledger_ppb"         ON "inventory_ledger"("pharmacy_id","product_id","batch_no");
 CREATE INDEX IF NOT EXISTS "idx_sales_ppb"          ON "sales"("pharmacy_id","product_id","batch_no");
 CREATE INDEX IF NOT EXISTS "idx_sales_presc"        ON "sales"("prescription_id");
+CREATE INDEX IF NOT EXISTS "idx_sales_buyer_user"   ON "sales"("buyer_user_id");
 CREATE INDEX IF NOT EXISTS "idx_sales_sold_by"      ON "sales"("sold_by");
 CREATE INDEX IF NOT EXISTS "idx_sales_sold_at"      ON "sales"("sold_at");
-
