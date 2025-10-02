@@ -534,25 +534,16 @@ END;
 
 ---- Views ----
 
--- Doctor schedule with capacity
--- 'booked_total' counts total appointments for a slot across all dates.
--- Per-date capacity enforcement is handled in the application/API layer (later).
+-- Doctor schedule (weekly slots only)
 CREATE VIEW IF NOT EXISTS "view_doctor_schedule" AS
-SELECT ts."id" AS "time_slot_id", d."id" AS "doctor_id", ud."name" AS "doctor_name", 
-    d."entity_id" AS "clinic_id", ts."day",
-    (CAST(ts."time_slot_start" AS TEXT) || '-' || CAST(ts."time_slot_end" AS TEXT)) AS "time_slot",
-    ts."appointments_per_slot", COALESCE(a."booked_total", 0) AS "booked_total",
-    (ts."appointments_per_slot" - COALESCE(a."booked_total", 0)) AS "remaining"
+SELECT ts."id" AS "time_slot_id", d."id" AS "doctor_id", ud."name" AS "doctor_name", d."entity_id" AS "clinic_id", ts."day",
+       (CAST(ts."time_slot_start" AS TEXT) || '-' || CAST(ts."time_slot_end" AS TEXT)) AS "time_slot", 
+       ts."appointments_per_slot"
   FROM "doctor_time_slots" AS "ts"
   JOIN "doctors" AS "d"
     ON d."id" = ts."doctor_id"
   JOIN "user_details" AS "ud"
-    ON ud."id" = d."user_id"
-  LEFT JOIN (
-    SELECT "doctor_time_slot_id", COUNT(*) AS "booked_total"
-      FROM "appointments"
-     GROUP BY "doctor_time_slot_id"
-    ) AS "a" ON a."doctor_time_slot_id" = ts."id";
+    ON ud."id" = d."user_id";
 
 -- Upcoming appointments
 CREATE VIEW IF NOT EXISTS "view_upcoming_appointments" AS 
