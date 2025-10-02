@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS "kinds" (
 
 CREATE TABLE IF NOT EXISTS "licences" (
     "id" INTEGER,
-    "entity_id" INTEGER,
+    "entity_id" INTEGER NOT NULL,
     "name" TEXT NOT NULL,
     "licence_no" TEXT NOT NULL UNIQUE,
     "issue_date" TEXT,
@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS "gov_documents" (
 
 CREATE TABLE IF NOT EXISTS "education_certificates" (
     "id" INTEGER,
-    "user_id" INTEGER,
+    "user_id" INTEGER NOT NULL,
     "school_name" TEXT,
     "course_name" TEXT,
     "certificate_details" TEXT,
@@ -84,7 +84,7 @@ CREATE TABLE IF NOT EXISTS "education_certificates" (
 
 CREATE TABLE IF NOT EXISTS "bank_details" (
     "id" INTEGER,
-    "user_id" INTEGER,
+    "user_id" INTEGER NOT NULL,
     "bank_ac_holder_name" TEXT NOT NULL,
     "bank_ac_number" TEXT NOT NULL UNIQUE,
     "bank_name" TEXT NOT NULL,
@@ -120,7 +120,7 @@ CREATE TABLE IF NOT EXISTS "staff" (
 -- Staff Attendance Records
 CREATE TABLE IF NOT EXISTS "staff_attendance_records" (
     "id" INTEGER,
-    "staff_id" INTEGER,
+    "staff_id" INTEGER NOT NULL,
     "in_date_time_stamp" TEXT,
     "out_date_time_stamp" TEXT,
     PRIMARY KEY("id"),
@@ -257,8 +257,8 @@ END;
 
 CREATE TABLE IF NOT EXISTS "patients" (
     "id" INTEGER,
-    "user_id" INTEGER,
-    "clinic_id" INTEGER,
+    "user_id" INTEGER NOT NULL,
+    "clinic_id" INTEGER NOT NULL,
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "created_by" INTEGER NOT NULL,
     PRIMARY KEY("id"),
@@ -372,7 +372,7 @@ CREATE TABLE IF NOT EXISTS "products" (
 
 CREATE TABLE IF NOT EXISTS "compositions" (
     "id" INTEGER,
-    "product_id" INTEGER,
+    "product_id" INTEGER NOT NULL,
     "composition_name" TEXT,
     PRIMARY KEY("id"),
     FOREIGN KEY("product_id") REFERENCES "products"("id")
