@@ -149,40 +149,41 @@ CREATE TABLE IF NOT EXISTS "staff_and_entity_logs" (
 );
 
 CREATE TRIGGER IF NOT EXISTS "trg_new_staff"
-  AFTER INSERT ON "staff"
-  FOR EACH ROW
-  BEGIN
-    INSERT INTO "staff_and_entity_logs" ("action","staff_id", "entity_id", "role", "salary", "rating", "cause", "review", "status", "created_by")
-    VALUES ('ADD', NEW."id", NEW."entity_id", NEW."role", NEW."salary", NEW."rating", COALESCE(NEW."cause", 'recruitment'), NEW."review", NEW."status", NEW."created_by");
-  END;
+AFTER INSERT ON "staff"
+FOR EACH ROW
+BEGIN
+  INSERT INTO "staff_and_entity_logs" ("action","staff_id", "entity_id", "role", "salary", "rating", "cause", "review", "status", "created_by")
+  VALUES ('ADD', NEW."id", NEW."entity_id", NEW."role", NEW."salary", NEW."rating", COALESCE(NEW."cause", 'recruitment'), NEW."review", NEW."status", NEW."created_by");
+END;
 
 CREATE TRIGGER IF NOT EXISTS "trg_update_staff"
-  BEFORE UPDATE OF "role", "salary", "rating", "review" ON "staff"
-  FOR EACH ROW
-  BEGIN
-    SELECT CASE WHEN NEW."cause" IS NULL THEN RAISE(ABORT,'cause required for staff update') END;
-    INSERT INTO "staff_and_entity_logs" ("action", "staff_id", "entity_id", "role", "salary", "rating", "cause", "review", "status", "created_by")
-    VALUES ('UPDATE', NEW."id", NEW."entity_id", NEW."role", NEW."salary", NEW."rating", NEW."cause", NEW."review", NEW."status", NEW."created_by");
-  END;
+BEFORE UPDATE OF "role", "salary", "rating", "review" ON "staff"
+FOR EACH ROW
+WHEN OLD."status" = 'active' AND NEW."status" = 'active' AND (OLD."role" IS NOT NEW."role" OR OLD."salary" IS NOT NEW."salary" OR OLD."rating" IS NOT NEW."rating" OR OLD."review" IS NOT NEW."review")
+BEGIN
+  SELECT CASE WHEN NEW."cause" IS NULL THEN RAISE(ABORT,'cause required for staff update') END;
+  INSERT INTO "staff_and_entity_logs" ("action", "staff_id", "entity_id", "role", "salary", "rating", "cause", "review", "status", "created_by")
+  VALUES ('UPDATE', NEW."id", NEW."entity_id", NEW."role", NEW."salary", NEW."rating", NEW."cause", NEW."review", NEW."status", NEW."created_by");
+END;
 
 -- Block hard deletes
 CREATE TRIGGER IF NOT EXISTS "trg_block_delete_staff"
-  BEFORE DELETE ON "staff"
-  FOR EACH ROW
-  BEGIN
-    SELECT RAISE(ABORT, 'Use status=inactive for soft delete');
-  END;
+BEFORE DELETE ON "staff"
+FOR EACH ROW
+BEGIN
+  SELECT RAISE(ABORT, 'Use status=inactive for soft delete');
+END;
 
 -- Log soft delete
 CREATE TRIGGER IF NOT EXISTS "trg_soft_delete_staff"
-  BEFORE UPDATE OF "status" ON "staff"
-  FOR EACH ROW
-  WHEN OLD."status" = 'active' AND NEW."status" = 'inactive'
-  BEGIN
-    SELECT CASE WHEN NEW."cause" IS NULL THEN RAISE(ABORT,'cause required for soft delete') END;
-    INSERT INTO "staff_and_entity_logs" ("action","staff_id","entity_id","role","salary","rating","cause","review","status","created_by")
-    VALUES ('DELETE', NEW."id", NEW."entity_id", NEW."role", NEW."salary", NEW."rating", NEW."cause", NEW."review", NEW."status", NEW."created_by");
-  END;
+BEFORE UPDATE OF "status" ON "staff"
+FOR EACH ROW
+WHEN OLD."status" = 'active' AND NEW."status" = 'inactive'
+BEGIN
+  SELECT CASE WHEN NEW."cause" IS NULL THEN RAISE(ABORT,'cause required for soft delete') END;
+  INSERT INTO "staff_and_entity_logs" ("action","staff_id","entity_id","role","salary","rating","cause","review","status","created_by")
+  VALUES ('DELETE', NEW."id", NEW."entity_id", NEW."role", NEW."salary", NEW."rating", NEW."cause", NEW."review", NEW."status", NEW."created_by");
+END;
 
 ---- Doctor's Details ----
 
@@ -206,12 +207,51 @@ CREATE TABLE IF NOT EXISTS "doctors" (
 CREATE TABLE IF NOT EXISTS "doctor_time_slots" (
     "id" INTEGER,
     "doctor_id" INTEGER NOT NULL,
-    "date" TEXT NOT NULL,
-    "time_slot" INTEGER NOT NULL,
+    "chamber_no" TEXT NOT NULL,
+  "day" TEXT NOT NULL CHECK ("day" IN ('mon','tue','wed','thu','fri','sat','sun')),
+    "time_slot_start" INTEGER NOT NULL,
+    "time_slot_end" INTEGER NOT NULL,
     "appointments_per_slot" INTEGER NOT NULL CHECK("appointments_per_slot" > 0),
+    CHECK ("time_slot_start" < "time_slot_end"),
+  UNIQUE("doctor_id","chamber_no","day","time_slot_start","time_slot_end"),
     PRIMARY KEY("id"),
     FOREIGN KEY("doctor_id") REFERENCES "doctors"("id")
 );
+-- time_slot_start/time_slot_end are INTEGER minutes from midnight (e.g., 09:30 => 570)
+
+-- Trigger: Prevent overlapping slots for the same doctor, chamber and day
+CREATE TRIGGER IF NOT EXISTS "trg_time_slot_no_overlap_ins"
+BEFORE INSERT ON "doctor_time_slots"
+FOR EACH ROW
+BEGIN
+  SELECT CASE
+    WHEN EXISTS (
+      SELECT 1 FROM "doctor_time_slots"
+       WHERE "doctor_id" = NEW."doctor_id"
+         AND "chamber_no" = NEW."chamber_no"
+         AND "day" = NEW."day"
+         AND NOT (NEW."time_slot_end" <= "time_slot_start" OR NEW."time_slot_start" >= "time_slot_end")
+    )
+    THEN RAISE(ABORT,'Time-slot overlaps existing')
+  END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS "trg_time_slot_no_overlap_upd"
+BEFORE UPDATE OF "doctor_id","chamber_no","day","time_slot_start","time_slot_end" ON "doctor_time_slots"
+FOR EACH ROW
+BEGIN
+  SELECT CASE
+    WHEN EXISTS (
+      SELECT 1 FROM "doctor_time_slots"
+       WHERE "doctor_id" = NEW."doctor_id"
+         AND "chamber_no" = NEW."chamber_no"
+         AND "day" = NEW."day"
+         AND "id" <> OLD."id"
+         AND NOT (NEW."time_slot_end" <= "time_slot_start" OR NEW."time_slot_start" >= "time_slot_end")
+    )
+    THEN RAISE(ABORT,'Time-slot overlaps existing')
+  END;
+END;
 
 ---- Patient Details ----
 
@@ -230,18 +270,19 @@ CREATE TABLE IF NOT EXISTS "patients" (
 ---- Appointment Details ----
 
 CREATE TABLE IF NOT EXISTS "appointments" (
+-- Note: appointment_date format: YYYY-MM-DD
     "id" INTEGER,
     "patient_id" INTEGER NOT NULL,
+    "appointment_date" TEXT NOT NULL,
     "doctor_time_slot_id" INTEGER NOT NULL,
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "created_by" INTEGER NOT NULL,
-    UNIQUE("patient_id", "doctor_time_slot_id"),
+    UNIQUE("patient_id", "doctor_time_slot_id", "appointment_date"),
     PRIMARY KEY("id"),
     FOREIGN KEY("patient_id") REFERENCES "patients"("id"),
     FOREIGN KEY("doctor_time_slot_id") REFERENCES "doctor_time_slots"("id"),
     FOREIGN KEY("created_by") REFERENCES "staff"("id")
 );
-
 
 ---- Prescription Details and related Tables ----
 
@@ -249,7 +290,7 @@ CREATE TABLE IF NOT EXISTS "prescriptions" (
     "id" INTEGER,
     "patient_id" INTEGER NOT NULL,
     "doctor_id" INTEGER NOT NULL,
-    "prescription" Blob,
+  "prescription" BLOB,
     "note" TEXT,
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY("id"),
@@ -421,21 +462,21 @@ CREATE TABLE IF NOT EXISTS "inventory_ledger" (
 
 -- Manual Inventory Adjustments
 CREATE TABLE IF NOT EXISTS "inventory_adjustments" (
-  "id" INTEGER,
-  "pharmacy_id" INTEGER NOT NULL,
-  "product_id" INTEGER NOT NULL,
-  "batch_no" TEXT NOT NULL,
-  "exp_date" TEXT,
-  "reason" TEXT,
-  "quantity_delta" INTEGER NOT NULL,
-  "rate" DECIMAL NOT NULL,
-  "mrp" DECIMAL NOT NULL,
-  "adjusted_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  "adjusted_by" INTEGER NOT NULL,
-  PRIMARY KEY("id"),
-  FOREIGN KEY("pharmacy_id") REFERENCES "entities"("id"),
-  FOREIGN KEY("product_id") REFERENCES "products"("id"),
-  FOREIGN KEY("adjusted_by") REFERENCES "staff"("id")
+    "id" INTEGER,
+    "pharmacy_id" INTEGER NOT NULL,
+    "product_id" INTEGER NOT NULL,
+    "batch_no" TEXT NOT NULL,
+    "exp_date" TEXT,
+    "reason" TEXT,
+    "quantity_delta" INTEGER NOT NULL,
+    "rate" DECIMAL NOT NULL,
+    "mrp" DECIMAL NOT NULL,
+    "adjusted_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "adjusted_by" INTEGER NOT NULL,
+    PRIMARY KEY("id"),
+    FOREIGN KEY("pharmacy_id") REFERENCES "entities"("id"),
+    FOREIGN KEY("product_id") REFERENCES "products"("id"),
+    FOREIGN KEY("adjusted_by") REFERENCES "staff"("id")
 );
 
 -- Trigger: purchase -> ledger (+)
@@ -494,67 +535,72 @@ END;
 ---- Views ----
 
 -- Doctor schedule with capacity
+-- 'booked_total' counts total appointments for a slot across all dates.
+-- Per-date capacity enforcement is handled in the application/API layer (later).
 CREATE VIEW IF NOT EXISTS "view_doctor_schedule" AS
-SELECT ts.id AS "time_slot_id", d.id AS "doctor_id", ud.name AS "doctor_name", 
-       d.entity_id AS "clinic_id", ts.date, ts.time_slot, 
-       ts.appointments_per_slot, COALESCE(a.booked, 0) AS "booked",
-       (ts.appointments_per_slot - COALESCE(a.booked, 0)) AS "remaining"
+SELECT ts."id" AS "time_slot_id", d."id" AS "doctor_id", ud."name" AS "doctor_name", 
+    d."entity_id" AS "clinic_id", ts."day",
+    (CAST(ts."time_slot_start" AS TEXT) || '-' || CAST(ts."time_slot_end" AS TEXT)) AS "time_slot",
+    ts."appointments_per_slot", COALESCE(a."booked_total", 0) AS "booked_total",
+    (ts."appointments_per_slot" - COALESCE(a."booked_total", 0)) AS "remaining"
   FROM "doctor_time_slots" AS "ts"
   JOIN "doctors" AS "d"
-    ON d.id = ts.doctor_id
+    ON d."id" = ts."doctor_id"
   JOIN "user_details" AS "ud"
-    ON ud.id = d.user_id
+    ON ud."id" = d."user_id"
   LEFT JOIN (
-    SELECT "doctor_time_slot_id", COUNT(*) AS "booked"
+    SELECT "doctor_time_slot_id", COUNT(*) AS "booked_total"
       FROM "appointments"
      GROUP BY "doctor_time_slot_id"
-    ) AS "a" ON a.doctor_time_slot_id = ts.id;
+    ) AS "a" ON a."doctor_time_slot_id" = ts."id";
 
 -- Upcoming appointments
 CREATE VIEW IF NOT EXISTS "view_upcoming_appointments" AS 
-SELECT ap.id AS "appointment_id", ts.date, ts.time_slot, p.id AS "patient_id",
-       up.name AS "patient_name", d.id AS "doctor_id", ud.name AS "doctor_name",
-       d.entity_id AS "clinic_id", e.name AS "clinic_name", ap.created_at
+SELECT ap."id" AS "appointment_id", ap."appointment_date" AS "date",
+       (CAST(ts."time_slot_start" AS TEXT) || '-' || CAST(ts."time_slot_end" AS TEXT)) AS "time_slot",
+       p."id" AS "patient_id",
+       up."name" AS "patient_name", d."id" AS "doctor_id", ud."name" AS "doctor_name",
+       d."entity_id" AS "clinic_id", e."name" AS "clinic_name", ap."created_at"
   FROM "appointments" AS "ap"
   JOIN "doctor_time_slots" AS "ts"
-    ON ts.id = ap.doctor_time_slot_id
+    ON ts."id" = ap."doctor_time_slot_id"
   JOIN "patients" AS "p"
-    ON p.id = ap.patient_id
+    ON p."id" = ap."patient_id"
   JOIN "user_details" AS "up"
-    ON up.id = p.user_id
+    ON up."id" = p."user_id"
   JOIN "doctors" AS "d"
-    ON d.id = ts.doctor_id
+    ON d."id" = ts."doctor_id"
   JOIN "user_details" AS "ud" 
-    ON ud.id = d.user_id
+    ON ud."id" = d."user_id"
   JOIN "entities" AS "e" 
-    ON e.id = d.entity_id
- WHERE ts.date >= DATE('now')
- ORDER BY ts.date, ts.time_slot;
+    ON e."id" = d."entity_id"
+ WHERE DATE(ap."appointment_date") >= DATE('now')
+ ORDER BY ap."appointment_date", ts."time_slot_start", ts."time_slot_end";
 
 -- Patient prescription history
 CREATE VIEW IF NOT EXISTS "view_patient_prescription_history" AS
-SELECT pr.id AS "prescription_id", pr.created_at, p.id AS "patient_id",
-       up.name AS "patient_name",d.id AS "doctor_id", ud.name AS "doctor_name"
+SELECT pr."id" AS "prescription_id", pr."created_at", p."id" AS "patient_id",
+       up."name" AS "patient_name",d."id" AS "doctor_id", ud."name" AS "doctor_name"
   FROM "prescriptions" AS "pr"
   JOIN "patients" AS "p"
-    ON p.id = pr.patient_id
+    ON p."id" = pr."patient_id"
   JOIN "user_details" AS "up"
-    ON up.id = p.user_id
+    ON up."id" = p."user_id"
   JOIN "doctors" AS "d"
-    ON d.id = pr.doctor_id
+    ON d."id" = pr."doctor_id"
   JOIN "user_details" AS "ud"
-    ON ud.id = d.user_id
- ORDER BY pr.created_at DESC;
+    ON ud."id" = d."user_id"
+ ORDER BY pr."created_at" DESC;
 
 -- Prescription items
 CREATE VIEW IF NOT EXISTS "view_prescription_items" AS
-SELECT pr.id AS "prescription_id", pdt.id AS "prescribed_product_id",
-       prod.id AS "product_id", prod.name AS "product_name", prod.tax_rate, prod.schedule
+SELECT pr."id" AS "prescription_id", pdt."id" AS "prescribed_product_id",
+       prod."id" AS "product_id", prod."name" AS "product_name", prod."tax_rate", prod."schedule"
   FROM "prescribed_products" AS "pdt"
   JOIN "prescriptions" AS "pr" 
-    ON pr.id = pdt.prescription_id
+    ON pr."id" = pdt."prescription_id"
   JOIN "products" AS "prod" 
-    ON prod.id = pdt.product_id; 
+    ON prod."id" = pdt."product_id"; 
 
 -- Current stock
 CREATE VIEW IF NOT EXISTS "view_current_stock" AS
@@ -579,8 +625,8 @@ SELECT vcs."pharmacy_id", vcs."product_id", vcs."batch_no", vcs."quantity",
   ) AS "exp_date",
   (
     SELECT pl."rate"
-      FROM "purchase_lines" AS pl
-      JOIN "purchase_headers" AS ph
+      FROM "purchase_lines" AS "pl"
+      JOIN "purchase_headers" AS "ph"
         ON ph."id" = pl."header_id"
      WHERE ph."pharmacy_id" = vcs."pharmacy_id"
        AND pl."product_id" = vcs."product_id"
@@ -590,8 +636,8 @@ SELECT vcs."pharmacy_id", vcs."product_id", vcs."batch_no", vcs."quantity",
   ) AS "rate",
   (
     SELECT pl."mrp"
-      FROM "purchase_lines" AS pl
-      JOIN "purchase_headers" AS ph
+      FROM "purchase_lines" AS "pl"
+      JOIN "purchase_headers" AS "ph"
         ON ph."id" = pl."header_id"
      WHERE ph."pharmacy_id" = vcs."pharmacy_id"
        AND pl."product_id" = vcs."product_id"
@@ -624,42 +670,42 @@ SELECT *
 
 -- Lab test status
 CREATE VIEW IF NOT EXISTS "view_lab_test_status" AS
-SELECT pt.id AS "prescribed_test_id", t.name AS "test_name", pr.id AS "prescription_id",
-       p.id AS "patient_id", up.name AS "patient_name", d.id AS "doctor_id", 
-       ud.name AS "doctor_name", tr.lab_id, tr.collection_date_time, 
-       tr.test_start_date_time, tr.test_end_date_time,
+SELECT pt."id" AS "prescribed_test_id", t."name" AS "test_name", pr."id" AS "prescription_id",
+       p."id" AS "patient_id", up."name" AS "patient_name", d."id" AS "doctor_id", 
+       ud."name" AS "doctor_name", tr."lab_id", tr."collection_date_time", 
+       tr."test_start_date_time", tr."test_end_date_time",
   CASE
-    WHEN tr.id IS NULL THEN 'PENDING'
-    WHEN tr.test_end_date_time IS NULL THEN 'IN-PROGRESS'
+    WHEN tr."id" IS NULL THEN 'PENDING'
+    WHEN tr."test_end_date_time" IS NULL THEN 'IN-PROGRESS'
     ELSE 'COMPLETED'
   END AS "status"
   FROM "prescribed_tests" AS "pt"
   JOIN "tests" AS "t"
-    ON t.id = pt.test_id
+    ON t."id" = pt."test_id"
   JOIN "prescriptions" AS "pr"
-    ON pr.id = pt.prescription_id
+    ON pr."id" = pt."prescription_id"
   JOIN "patients" AS "p"
-    ON p.id = pr.patient_id
+    ON p."id" = pr."patient_id"
   JOIN "user_details" AS "up"
-    ON up.id = p.user_id
+    ON up."id" = p."user_id"
   JOIN "doctors" AS "d"
-    ON d.id = pr.doctor_id
+    ON d."id" = pr."doctor_id"
   JOIN "user_details" AS "ud"
-    ON ud.id = d.user_id
+    ON ud."id" = d."user_id"
   LEFT JOIN "test_records" AS "tr" 
-    ON tr.prescribed_tests_id = pt.id;
+    ON tr."prescribed_tests_id" = pt."id";
 
 -- Staff current check-in (today)
 CREATE VIEW IF NOT EXISTS "view_staff_checked_in_today" AS
-SELECT sar.id AS "attendance_id", s.id AS "staff_id", u.name AS "staff_name",
-       s.entity_id AS "clinic_id", sar.in_date_time_stamp
+SELECT sar."id" AS "attendance_id", s."id" AS "staff_id", u."name" AS "staff_name",
+       s."entity_id" AS "clinic_id", sar."in_date_time_stamp"
   FROM "staff_attendance_records" AS "sar"
-  JOIN "staff" AS s
-    ON s.id = sar.staff_id
+  JOIN "staff" AS "s"
+    ON s."id" = sar."staff_id"
   JOIN "user_details" AS "u" 
-    ON u.id = s.user_id
- WHERE sar.out_date_time_stamp IS NULL
-   AND DATE(sar.in_date_time_stamp) = DATE('now');
+    ON u."id" = s."user_id"
+ WHERE sar."out_date_time_stamp" IS NULL
+   AND DATE(sar."in_date_time_stamp") = DATE('now');
 
 -- Helper views for soft deletes / active rows
 CREATE VIEW IF NOT EXISTS "view_active_entities" AS
@@ -670,47 +716,48 @@ SELECT * FROM "staff" WHERE "status" = 'active';
 
 -- Sales OTC or Rx
 CREATE VIEW IF NOT EXISTS "view_sales_party" AS
-SELECT s.id AS "sale_id", s.pharmacy_id, s.prescription_id, 
-       s.buyer_user_id, s.product_id, s.batch_no, s.quantity, 
-       s.rate, s.mrp, s.sold_at, s.sold_by,
+SELECT s."id" AS "sale_id", s."pharmacy_id", s."prescription_id", 
+       s."buyer_user_id", s."product_id", s."batch_no", s."quantity", 
+       s."rate", s."mrp", s."sold_at", s."sold_by",
   CASE 
     WHEN s."prescription_id" IS NOT NULL THEN 'Rx' 
     ELSE 'OTC' 
    END AS "sale_type",
   CASE 
-    WHEN s.prescription_id IS NOT NULL THEN up.name
-    ELSE bu.name
+    WHEN s."prescription_id" IS NOT NULL THEN up."name"
+    ELSE bu."name"
    END AS "party_name"
   FROM "sales" AS "s"
   LEFT JOIN "prescriptions" AS "pr"
-    ON pr.id = s.prescription_id
+    ON pr."id" = s."prescription_id"
   LEFT JOIN "patients" AS "p"
-    ON p.id = pr.patient_id
+    ON p."id" = pr."patient_id"
   LEFT JOIN "user_details" AS "up"
-    ON up.id = p.user_id
+    ON up."id" = p."user_id"
   LEFT JOIN "user_details" AS "bu"
-    ON bu.id = s.buyer_user_id;
+    ON bu."id" = s."buyer_user_id";
 
 ---- Uniqueness and performance indexes ----
 
 CREATE UNIQUE INDEX IF NOT EXISTS "ux_entities_name_kind"
-    ON "entities"("name","kind_id");
+    ON "entities"("name", "kind_id");
 CREATE UNIQUE INDEX IF NOT EXISTS "ux_doctors_person"
     ON "doctors"("user_id", "entity_id");
 CREATE UNIQUE INDEX IF NOT EXISTS "ux_patients_person"
     ON "patients"("user_id", "clinic_id");
 CREATE UNIQUE INDEX IF NOT EXISTS "ux_doctor_time_slot"
-    ON "doctor_time_slots"("doctor_id","date","time_slot");
+  ON "doctor_time_slots"("doctor_id", "chamber_no", "day", "time_slot_start", "time_slot_end");
 CREATE UNIQUE INDEX IF NOT EXISTS "ux_appointments"
-    ON "appointments"("patient_id", "doctor_time_slot_id");
+  ON "appointments"("patient_id", "doctor_time_slot_id", "appointment_date");
 CREATE UNIQUE INDEX IF NOT EXISTS "ux_prescribed_tests"
-    ON "prescribed_tests"("prescription_id","test_id");
+    ON "prescribed_tests"("prescription_id", "test_id");
 CREATE UNIQUE INDEX IF NOT EXISTS "ux_prescribed_products"
-    ON "prescribed_products"("prescription_id","product_id");
+    ON "prescribed_products"("prescription_id", "product_id");
 
 CREATE INDEX IF NOT EXISTS "idx_licences_entity"    ON "licences"("entity_id");
 CREATE INDEX IF NOT EXISTS "idx_doctors_clinic"     ON "doctors"("entity_id");
 CREATE INDEX IF NOT EXISTS "idx_appt_slot"          ON "appointments"("doctor_time_slot_id");
+CREATE INDEX IF NOT EXISTS "idx_appt_slot_date"     ON "appointments"("doctor_time_slot_id", "appointment_date");
 CREATE INDEX IF NOT EXISTS "idx_staff_entity"       ON "staff"("entity_id");
 CREATE INDEX IF NOT EXISTS "idx_staff_person"       ON "staff"("user_id");
 CREATE INDEX IF NOT EXISTS "idx_staff_att_staff"    ON "staff_attendance_records"("staff_id");
