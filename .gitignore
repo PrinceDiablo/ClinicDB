@@ -1,0 +1,6 @@
+# Visual Studio settings
+.vscode/
+
+# SQLite related files
+*.sqlite
+*.db

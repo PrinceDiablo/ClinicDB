@@ -1,22 +1,24 @@
-PRAGMA foreign_keys = ON
+PRAGMA foreign_keys = ON;
 
 ---- Entities and related Tables ----
 
 CREATE TABLE IF NOT EXISTS "entities" (
     "id" INTEGER,
     "name" TEXT NOT NULL,
-    "kind_id" INTEGER ,
+    "kind_id" INTEGER NOT NULL,
     "ownership" TEXT NOT NULL DEFAULT 'owned' CHECK ("ownership" IN ('owned','outsourced')),
     "address" TEXT,
+    "contact_no" TEXT NOT NULL,
     "status" TEXT NOT NULL DEFAULT 'active' CHECK ("status" IN ('active','inactive')),
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE("name", "contact_no"),
     PRIMARY KEY("id"),
     FOREIGN KEY("kind_id") REFERENCES "kinds"("id")
 );
 
 CREATE TABLE IF NOT EXISTS "kinds" (
     "id" INTEGER,
-    "name" TEXT NOT NULL,
+    "name" TEXT NOT NULL UNIQUE,
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY("id")
 );
@@ -25,10 +27,11 @@ CREATE TABLE IF NOT EXISTS "licences" (
     "id" INTEGER,
     "entity_id" INTEGER NOT NULL,
     "name" TEXT NOT NULL,
-    "licence_no" TEXT NOT NULL UNIQUE,
+    "licence_no" TEXT NOT NULL,
     "issue_date" TEXT,
     "expiry_date" TEXT,
     "created_at" TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE("name", "licence_no"),
     PRIMARY KEY("id"),
     FOREIGN KEY("entity_id") REFERENCES "entities"("id")
 );
