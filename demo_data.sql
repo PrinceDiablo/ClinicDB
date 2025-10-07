@@ -1,12 +1,7 @@
+-- Seed data load (execute after schema). Order respects foreign key dependencies.
+BEGIN TRANSACTION;
 
-------------------------------------------------------------------
--- SIMPLE EXPLICIT-ID DEMO DATA (No subqueries as requested)
--- WARNING: Run on a fresh empty database or after deleting existing rows,
---          because explicit IDs are assumed to start at 1 and be contiguous.
--- Order of insertion preserves FK integrity.
--- Schema reference: see `schema.sql`.
-------------------------------------------------------------------
--- 1. Kinds (IDs 1..5)
+-- Kinds
 INSERT INTO "kinds"("id","name") VALUES
   (1,'clinic'),
   (2,'pharmacy'),
@@ -14,7 +9,7 @@ INSERT INTO "kinds"("id","name") VALUES
   (4,'distributor'),
   (5,'company');
 
--- 2. Entities (IDs 1..11)
+-- Entities
 INSERT INTO "entities"("id","name","kind_id","ownership","address","contact_no") VALUES
   (1,'Sunrise Clinic',1,'owned','Mumbai','9000000001'),
   (2,'HealthPlus Pharmacy',2,'owned','Mumbai','9000000002'),
@@ -28,7 +23,7 @@ INSERT INTO "entities"("id","name","kind_id","ownership","address","contact_no")
   (10,'GreenLeaf Biotech',5,'outsourced','Kolkata','9000000010'),
   (11,'HealWell Pharma',5,'outsourced','Indore','9000000011');
 
--- 3. Licences
+-- Licences
 INSERT INTO "licences"("entity_id","name","licence_no","issue_date","expiry_date") VALUES
   (2,'Trade Licence','TL-15472025','2025-04-01','2026-04-03'),
   (2,'Drug Licence','DL-578/5/2547','2024-04-01','2027-04-01'),
@@ -39,7 +34,7 @@ INSERT INTO "licences"("entity_id","name","licence_no","issue_date","expiry_date
   (3,'Lab Licence','LAB-7488-657','2024-04-01','2027-04-03'),
   (3,'GST','ID2548446Z','2024-04-01','2029-03-31');
 
--- 4. User Details (IDs 1..10)
+-- User details
 INSERT INTO "user_details"("id","name","dob","gender","permanent_address","temp_address","primary_contact_no","secondary_contact_no") VALUES
   (1,'Worker A','2000-01-01','male','Mumbai, India','Bangalore, India','8657988452',NULL),
   (2,'Worker B','1998-05-12','female','Chennai, India','Hyderabad, India','7896541230','9823456710'),
@@ -52,7 +47,7 @@ INSERT INTO "user_details"("id","name","dob","gender","permanent_address","temp_
   (9,'Worker I','1990-10-20','prefer_not_to_say','Kolkata, India',NULL,'9012673456',NULL),
   (10,'Worker J','1994-04-27','male','Ahmedabad, India',NULL,'8899001122',NULL);
 
--- 5. Authenticate Users
+-- Application users
 INSERT INTO "authenticate_users"("user_id","email","password_hash") VALUES
   (1,'a.reception@demo.local','$2a$10$abcdefghijklmnopqrstuu1'),
   (2,'b.pharmacist@demo.local','$2a$10$abcdefghijklmnopqrstuu2'),
@@ -61,7 +56,7 @@ INSERT INTO "authenticate_users"("user_id","email","password_hash") VALUES
   (5,'e.doctor@demo.local','$2a$10$abcdefghijklmnopqrstuu5'),
   (6,'f.doctor@demo.local','$2a$10$abcdefghijklmnopqrstuu6');
 
--- 6. Government Documents
+-- Government documents
 INSERT INTO "gov_documents"("user_id","card_name","card_number","card_photo") VALUES
   (1,'Aadhaar','AADH-0001',NULL),
   (1,'Passport','PASS-A0001',NULL),
@@ -79,7 +74,7 @@ INSERT INTO "gov_documents"("user_id","card_name","card_number","card_photo") VA
   (9,'Aadhaar','AADH-0009',NULL),
   (10,'Aadhaar','AADH-0010',NULL);
 
--- 7. Education Certificates
+-- Education certificates
 INSERT INTO "education_certificates"("user_id","school_name","course_name","certificate_details","certificate_id") VALUES
   (1,'Central School','Senior Secondary','CBSE 12th Certificate','SSC-A1'),
   (2,'Pharma Institute','Diploma in Pharmacy','State Pharmacy Diploma','PHARMA-B2'),
@@ -88,7 +83,7 @@ INSERT INTO "education_certificates"("user_id","school_name","course_name","cert
   (5,'Medical College','MBBS','MBBS Degree Certificate','MBBS-E5'),
   (6,'Medical University','MD (Medicine)','MD Degree Certificate','MD-F6');
 
--- 8. Bank Accounts
+-- Bank accounts
 INSERT INTO "bank_details"("user_id","bank_ac_holder_name","bank_ac_number","bank_name","bank_IFSC_code","bank_branch") VALUES
   (1,'Worker A','ICICI0001001','ICICI Bank','ICIC0000100','Mumbai Main'),
   (2,'Worker B','HDFC0002002','HDFC Bank','HDFC0000200','Mumbai Central'),
@@ -97,32 +92,32 @@ INSERT INTO "bank_details"("user_id","bank_ac_holder_name","bank_ac_number","ban
   (5,'Worker E','SBI0005005','SBI','SBIN0000500','Jaipur Junction'),
   (6,'Worker F','ICICI0006006','ICICI Bank','ICIC0000600','Lucknow Chowk');
 
--- 9. Staff (IDs will auto = 1..4; created_by references these IDs)
+-- Staff
 INSERT INTO "staff"("user_id","entity_id","role","join_date","salary","rating","review","cause","created_by") VALUES
   (1,1,'receptionist','2025-01-10',25000,5,'Excellent handling','recruitment',NULL),
   (2,2,'pharmacist','2025-01-15',45000,4,'Experienced pharmacist','recruitment',1),
   (3,2,'technician','2025-02-01',20000,3,'Pharmacy helper','recruitment',2),
   (4,3,'technician','2025-02-05',30000,4,'Lab technician','recruitment',1);
 
--- 10. Doctors (IDs auto = 1,2) created_by staff 1
+-- Doctors
 INSERT INTO "doctors"("user_id","entity_id","reg_no","specialty","consultation_fees","entity_commission","created_by") VALUES
   (5,1,'REG-MBBS-2025-001','General Medicine',500,20,1),
   (6,1,'REG-MD-2025-002','Internal Medicine',1000,25,1);
 
--- 11. Doctor Time Slots (IDs auto = 1..4)
+-- Doctor time slots
 INSERT INTO "doctor_time_slots"("doctor_id","chamber_no","day","time_slot_start","time_slot_end","appointments_per_slot") VALUES
   (1,'C1','mon',540,660,4),
   (1,'C1','wed',540,660,4),
   (2,'C2','tue',840,960,4),
   (2,'C2','thu',840,960,4);
 
--- 12. Patients (IDs auto = 1..3) created_by staff 1
+-- Patients
 INSERT INTO "patients"("user_id","clinic_id","created_by") VALUES
   (7,1,1),
   (8,1,1),
   (9,1,1);
 
--- 13. Appointments (6) (slot ids: 2=doc1 wed,4=doc2 thu,3=doc2 tue)
+-- Appointments
 INSERT INTO "appointments"("patient_id","appointment_date","doctor_time_slot_id","created_by") VALUES
   (1,'2025-10-08',2,1),
   (2,'2025-10-09',4,1),
@@ -131,7 +126,7 @@ INSERT INTO "appointments"("patient_id","appointment_date","doctor_time_slot_id"
   (2,'2025-10-16',4,1),
   (3,'2025-10-22',2,1);
 
--- 14. Prescriptions (IDs auto 1..6) NOTE: doctor_id must NOT be NULL
+-- Prescriptions
 INSERT INTO "prescriptions"("patient_id","doctor_id","prescription","note") VALUES
   (1,1,NULL,'Fever & body ache'),
   (2,2,NULL,'Allergic rhinitis & reflux'),
@@ -140,7 +135,7 @@ INSERT INTO "prescriptions"("patient_id","doctor_id","prescription","note") VALU
   (2,2,NULL,'Allergy maintenance'),
   (3,1,NULL,'Hypertension + lipid monitoring');
 
--- 15. Products (explicit IDs 1..30)
+-- Products
 INSERT INTO "products"("id","name","tax_rate","schedule","category","company_id","description","picture","created_by") VALUES
   (1,'P650',12,'not-scheduled','Analgesic',7,'Paracetamol 650 mg',NULL,2),
   (2,'Calpol 500',12,'not-scheduled','Analgesic',7,'Paracetamol 500 mg',NULL,2),
@@ -173,7 +168,7 @@ INSERT INTO "products"("id","name","tax_rate","schedule","category","company_id"
   (29,'Levocetirizine 5',5,'not-scheduled','Antihistamine',11,'Levocetirizine 5 mg',NULL,2),
   (30,'Calcium+D3',12,'not-scheduled','Supplement',11,'Calcium with Vitamin D3',NULL,2);
 
--- 16. Compositions
+-- Product compositions
 INSERT INTO "compositions"("product_id","composition_name") VALUES
  (1,'Paracetamol 650 mg'),(2,'Paracetamol 500 mg'),(3,'Dextromethorphan Combo'),(4,'Dextromethorphan + Zinc'),
  (5,'Multivitamin + Minerals'),(6,'Albendazole'),(7,'Amoxicillin 500 mg'),(8,'Azithromycin 500 mg'),
@@ -184,7 +179,7 @@ INSERT INTO "compositions"("product_id","composition_name") VALUES
  (25,'Insulin 30/70'),(26,'Multivitamin Syrup'),(27,'Guaifenesin Combo'),(28,'Antacid Suspension'),
  (29,'Levocetirizine 5 mg'),(30,'Calcium Carbonate + D3');
 
--- 17. Prescribed Products
+-- Prescribed products
 INSERT INTO "prescribed_products"("prescription_id","product_id") VALUES
   (1,1),(1,10),(1,20),
   (2,29),(2,11),(2,22),
@@ -193,7 +188,7 @@ INSERT INTO "prescribed_products"("prescription_id","product_id") VALUES
   (5,29),(5,23),
   (6,15),(6,14),(6,25);
 
--- 18. Tests (IDs 1..20 created_by staff 4)
+-- Tests
 INSERT INTO "tests"("id","name","description","created_by") VALUES
   (1,'CBC','Complete Blood Count',4),
   (2,'Lipid Profile','Cholesterol panel',4),
@@ -216,7 +211,7 @@ INSERT INTO "tests"("id","name","description","created_by") VALUES
   (19,'Vitamin B12','Serum B12 level',4),
   (20,'X-Ray Knee AP','Knee AP radiograph',4);
 
--- 19. Prescribed Tests
+-- Prescribed tests
 INSERT INTO "prescribed_tests"("prescription_id","test_id") VALUES
   (1,1),(1,5),
   (2,1),(2,11),
@@ -225,13 +220,28 @@ INSERT INTO "prescribed_tests"("prescription_id","test_id") VALUES
   (5,8),(5,10),
   (6,2),(6,7);
 
--- 20. Purchase Headers (IDs 1..3) pharmacy=2, distributors 4/5/6, created_by staff 2
+-- Test records
+INSERT INTO "test_records"("prescribed_tests_id","lab_id","collection_date_time","test_start_date_time","test_end_date_time","report","report_by_doctor_id","mrp","rate","recorded_by") VALUES
+  (1,3,'2025-10-08 09:30','2025-10-08 09:45','2025-10-08 10:10',NULL,1,400,350,4),
+  (2,3,'2025-10-08 08:00','2025-10-08 08:05','2025-10-08 08:20',NULL,1,150,120,4),
+  (3,3,'2025-10-09 09:40','2025-10-09 09:55','2025-10-09 10:25',NULL,2,400,350,4),
+  (4,3,'2025-10-09 10:50','2025-10-09 11:05','2025-10-09 11:20',NULL,2,800,700,4),
+  (5,3,'2025-10-14 09:10','2025-10-14 09:25','2025-10-14 10:15',NULL,2,900,800,4),
+  (6,3,'2025-10-14 10:30','2025-10-14 10:35','2025-10-14 10:50',NULL,2,500,450,4),
+  (7,3,'2025-10-15 09:15','2025-10-15 09:25','2025-10-15 09:55',NULL,1,400,350,4),
+  (8,3,'2025-10-15 09:20','2025-10-15 09:30',NULL,NULL,1,1800,1600,4),
+  (9,3,'2025-10-16 09:05','2025-10-16 09:15','2025-10-16 10:05',NULL,2,1200,1100,4),
+  (10,3,'2025-10-16 09:10','2025-10-16 09:20','2025-10-16 09:45',NULL,2,300,250,4),
+  (11,3,'2025-10-22 09:00','2025-10-22 09:15','2025-10-22 10:25',NULL,1,900,800,4),
+  (12,3,'2025-10-22 09:10','2025-10-22 09:20',NULL,NULL,1,700,650,4);
+
+-- Purchase headers
 INSERT INTO "purchase_headers"("id","pharmacy_id","distributor_id","invoice_no","invoice_date","created_by") VALUES
   (1,2,4,'INV-2025-001','2025-09-25',2),
   (2,2,5,'INV-2025-002','2025-09-26',2),
   (3,2,6,'INV-2025-003','2025-09-27',2);
 
--- 21. Purchase Lines (all 30 products) created_by staff 2
+-- Purchase lines
 INSERT INTO "purchase_lines"("header_id","line_no","product_id","batch_no","exp_date","rate","mrp","quantity","created_by") VALUES
   (1,1,1,'BATCH-P1-A','2026-06-30',15.00,20.00,100,2),
   (1,2,2,'BATCH-P2-A','2026-05-31',10.00,15.00,80,2),
@@ -264,7 +274,7 @@ INSERT INTO "purchase_lines"("header_id","line_no","product_id","batch_no","exp_
   (3,9,29,'BATCH-P29-C','2026-06-30',5.00,9.00,160,2),
   (3,10,30,'BATCH-P30-C','2026-08-31',32.00,50.00,100,2);
 
--- 22. Sales (no subqueries) staff 2
+-- Sales
 INSERT INTO "sales"("pharmacy_id","prescription_id","buyer_user_id","product_id","batch_no","quantity","rate","mrp","sold_by") VALUES
   (2,1,NULL,1,'BATCH-P1-A',2,15.00,20.00,2),
   (2,1,NULL,10,'BATCH-P10-A',1,3.00,6.00,2),
@@ -272,4 +282,6 @@ INSERT INTO "sales"("pharmacy_id","prescription_id","buyer_user_id","product_id"
   (2,2,NULL,29,'BATCH-P29-C',1,5.00,9.00,2),
   (2,3,NULL,15,'BATCH-P15-B',1,40.00,60.00,2),
   (2,NULL,10,5,'BATCH-P5-A',1,40.00,60.00,2);
--- No sales recorded for prescriptions 4,5,6 (external/future)
+
+COMMIT;
+
