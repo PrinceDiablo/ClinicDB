@@ -104,7 +104,7 @@ CREATE TABLE IF NOT EXISTS "staff" (
     "id" INTEGER,
     "user_id" INTEGER NOT NULL,
     "entity_id" INTEGER NOT NULL,
-    "role" TEXT NOT NULL CHECK ("role" IN ('manager','pharmacist','receptionist','technician')),
+    "role" TEXT NOT NULL CHECK ("role" IN ('manager','pharmacist','receptionist','technician','salesperson')),
     "join_date" TEXT,
     "salary" INTEGER NOT NULL,
     "rating" INTEGER CHECK ("rating" BETWEEN 0 AND 5),

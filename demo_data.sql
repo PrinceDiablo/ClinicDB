@@ -55,6 +55,10 @@ INSERT INTO "authenticate_users"("user_id","email","password_hash") VALUES
   (4,'d.labtech@demo.local','$2a$10$abcdefghijklmnopqrstuu4'),
   (5,'e.doctor@demo.local','$2a$10$abcdefghijklmnopqrstuu5'),
   (6,'f.doctor@demo.local','$2a$10$abcdefghijklmnopqrstuu6');
+  (7,'g.customer@demo.local','$2a$10$abcdefghijklmnopqrstuu7');
+  (8,'h.customer@demo.local','$2a$10$abcdefghijklmnopqrstuu8');
+  (9,'i.customer@demo.local','$2a$10$abcdefghijklmnopqrstuu9');
+  (10,'j.customer@demo.local','$2a$10$abcdefghijklmnopqrstuu10');
 
 -- Government documents
 INSERT INTO "gov_documents"("user_id","card_name","card_number","card_photo") VALUES
@@ -96,7 +100,7 @@ INSERT INTO "bank_details"("user_id","bank_ac_holder_name","bank_ac_number","ban
 INSERT INTO "staff"("user_id","entity_id","role","join_date","salary","rating","review","cause","created_by") VALUES
   (1,1,'receptionist','2025-01-10',25000,5,'Excellent handling','recruitment',NULL),
   (2,2,'pharmacist','2025-01-15',45000,4,'Experienced pharmacist','recruitment',1),
-  (3,2,'technician','2025-02-01',20000,3,'Pharmacy helper','recruitment',2),
+  (3,2,'salesperson','2025-02-01',20000,3,'Pharmacy helper','recruitment',2),
   (4,3,'technician','2025-02-05',30000,4,'Lab technician','recruitment',1);
 
 -- Doctors
@@ -247,7 +251,7 @@ INSERT INTO "purchase_lines"("header_id","line_no","product_id","batch_no","exp_
   (1,2,2,'BATCH-P2-A','2026-05-31',10.00,15.00,80,2),
   (1,3,3,'BATCH-P3-A','2026-07-31',30.00,45.00,60,2),
   (1,4,4,'BATCH-P4-A','2026-07-31',32.00,48.00,60,2),
-  (1,5,5,'BATCH-P5-A','2027-01-31',40.00,60.00,120,2),
+  (1,5,5,'BATCH-P5-A','2027-01-31',200.00,250.00,120,2),
   (1,6,6,'BATCH-P6-A','2027-02-28',5.00,8.00,150,2),
   (1,7,7,'BATCH-P7-A','2026-04-30',55.00,75.00,70,2),
   (1,8,8,'BATCH-P8-A','2026-04-30',70.00,95.00,70,2),
@@ -269,19 +273,19 @@ INSERT INTO "purchase_lines"("header_id","line_no","product_id","batch_no","exp_
   (3,4,24,'BATCH-P24-C','2026-09-30',30.00,48.00,100,2),
   (3,5,25,'BATCH-P25-C','2026-03-31',150.00,190.00,60,2),
   (3,6,26,'BATCH-P26-C','2027-02-28',40.00,60.00,120,2),
-  (3,7,27,'BATCH-P27-C','2026-05-31',55.00,80.00,80,2),
+  (3,7,27,'BATCH-P27-C','2026-05-31',160.00,200.00,80,2),
   (3,8,28,'BATCH-P28-C','2026-05-31',35.00,55.00,90,2),
   (3,9,29,'BATCH-P29-C','2026-06-30',5.00,9.00,160,2),
   (3,10,30,'BATCH-P30-C','2026-08-31',32.00,50.00,100,2);
 
 -- Sales
 INSERT INTO "sales"("pharmacy_id","prescription_id","buyer_user_id","product_id","batch_no","quantity","rate","mrp","sold_by") VALUES
-  (2,1,NULL,1,'BATCH-P1-A',2,15.00,20.00,2),
-  (2,1,NULL,10,'BATCH-P10-A',1,3.00,6.00,2),
-  (2,2,NULL,11,'BATCH-P11-B',1,28.00,42.00,2),
-  (2,2,NULL,29,'BATCH-P29-C',1,5.00,9.00,2),
-  (2,3,NULL,15,'BATCH-P15-B',1,40.00,60.00,2),
-  (2,NULL,10,5,'BATCH-P5-A',1,40.00,60.00,2);
+  (2,1,NULL,1,'BATCH-P1-A',2,18.00,20.00,2),
+  (2,1,NULL,10,'BATCH-P10-A',1,5.00,6.00,2),
+  (2,2,NULL,11,'BATCH-P11-B',1,38.00,42.00,2),
+  (2,2,NULL,29,'BATCH-P29-C',1,8.00,9.00,2),
+  (2,3,NULL,15,'BATCH-P15-B',1,54.00,60.00,2),
+  (2,NULL,10,5,'BATCH-P5-A',1,225.00,250.00,2);
 
 COMMIT;
 
