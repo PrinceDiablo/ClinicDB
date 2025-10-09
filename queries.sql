@@ -1,5 +1,7 @@
 -- =========================================================
--- A SCENARIO: FUSSY CUSTOMER
+-- A SCENARIO: FUSSY CUSTOMER 
+--   (This scenario is based on "sample_data.sql". 
+--    Please populate the DB with "sample_data" before running the scenario.)
 -- =========================================================
 
 -- A flying customer walks into the pharmacy and buys some OTC medicines.
@@ -24,7 +26,11 @@ VALUES
 -- Step 3: View the total cost
 SELECT SUM("rate") AS "total_price"
   FROM "sales"
- WHERE "primary_contact_no" = '9090909090'
+ WHERE "buyer_user_id" = (
+        SELECT "id" 
+          FROM "user_details" 
+         WHERE "primary_contact_no" = '9090909090'
+        )
    AND strftime('%d', "sold_at") = strftime('%d', 'now');
 
 -- The customer says they can only pay ₹500 total.
@@ -38,12 +44,16 @@ UPDATE "sales"
 -- Step 2: Delete the other sale item
 DELETE FROM "sales"
  WHERE "buyer_user_id" = (SELECT "id" FROM "user_details" WHERE "primary_contact_no" = '9090909090')
-   AND "product_id" = 6;
+   AND "product_id" = 27;
 
 -- Step 3: View the total cost
 SELECT SUM("rate") AS "total_price"
   FROM "sales"
- WHERE "primary_contact_no" = '9090909090'
+ WHERE "buyer_user_id" = (
+        SELECT "id" 
+          FROM "user_details" 
+         WHERE "primary_contact_no" = '9090909090'
+        )
    AND strftime('%d', "sold_at") = strftime('%d', 'now');
 
 -- =========================================================

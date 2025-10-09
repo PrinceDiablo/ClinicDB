@@ -54,10 +54,10 @@ INSERT INTO "authenticate_users"("user_id","email","password_hash") VALUES
   (3,'c.helper@demo.local','$2a$10$abcdefghijklmnopqrstuu3'),
   (4,'d.labtech@demo.local','$2a$10$abcdefghijklmnopqrstuu4'),
   (5,'e.doctor@demo.local','$2a$10$abcdefghijklmnopqrstuu5'),
-  (6,'f.doctor@demo.local','$2a$10$abcdefghijklmnopqrstuu6');
-  (7,'g.customer@demo.local','$2a$10$abcdefghijklmnopqrstuu7');
-  (8,'h.customer@demo.local','$2a$10$abcdefghijklmnopqrstuu8');
-  (9,'i.customer@demo.local','$2a$10$abcdefghijklmnopqrstuu9');
+  (6,'f.doctor@demo.local','$2a$10$abcdefghijklmnopqrstuu6'),
+  (7,'g.customer@demo.local','$2a$10$abcdefghijklmnopqrstuu7'),
+  (8,'h.customer@demo.local','$2a$10$abcdefghijklmnopqrstuu8'),
+  (9,'i.customer@demo.local','$2a$10$abcdefghijklmnopqrstuu9'),
   (10,'j.customer@demo.local','$2a$10$abcdefghijklmnopqrstuu10');
 
 -- Government documents
