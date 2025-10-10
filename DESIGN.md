@@ -2,7 +2,7 @@
 
 By Nirupam Mandal
 
-Video overview: <URL HERE>
+Video overview: (https://youtu.be/b0HCtoXtHZs)
 
 
 ## Scope
@@ -133,7 +133,7 @@ Video overview: <URL HERE>
 
 ### Relationships
 
-![ER Diagram](images\clinic-er-diagram.png)
+![ER Diagram](images/clinic-er-diagram.png)
 
 ### Key relationships:
 
@@ -180,7 +180,7 @@ Video overview: <URL HERE>
   - Speed up queries on purchases and sales with composite indexes.  
 
 - **Views**
-  - `view_doctor_schedule`: shows doctor's weakly schedule.
+  - `view_doctor_schedule`: shows doctor's weekly schedule.
   - `view_upcoming_appointments`: quick list of all future appointments.
   - `view_patient_prescription_history`: shows every prescription a patient got.
   - `view_stock_by_batch`: shows current inventory.

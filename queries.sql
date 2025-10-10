@@ -1,6 +1,6 @@
 -- =========================================================
--- A SCENARIO: FUSSY CUSTOMER 
---   (This scenario is based on "sample_data.sql". 
+-- A SCENARIO: FUSSY CUSTOMER
+--   (This scenario is based on "sample_data.sql".
 --    Please populate the DB with "sample_data" before running the scenario.)
 -- =========================================================
 
@@ -8,30 +8,30 @@
 
 -- Step 1: Add this customer to "user_details" and "authenticate_users"
 INSERT INTO "user_details" ("name", "dob", "gender", "temp_address", "primary_contact_no")
-VALUES ('Flying Customer', '1990-01-01', 'Other', 'Local Walk-in', '+91-9090909090');
+VALUES ('Flying Customer', '1990-01-01', 'other', 'Local Walk-in', '9090909090');
 
 INSERT INTO "authenticate_users" ("user_id", "email", "password_hash")
 VALUES ((SELECT "id" FROM "user_details" WHERE "primary_contact_no" = '9090909090'),
-        'j.customer@demo.local', '$2a$10$abcdefghijklmnopqrstuu11');
+        'k.customer@demo.local', '$2a$10$abcdefghijklmnopqrstuu11');
 
 -- Step 2: Record a new sale made by Worker B (pharmacist) to the flying customer.
 -- Example: Vitamin Tablets (₹250) and Cough Syrup (₹200)
-INSERT INTO "sales" ("product_id", "pharmacy_id", "buyer_user_id", "sold_by", "quantity", "rate", "sold_at")
+INSERT INTO "sales" ("product_id", "pharmacy_id", "buyer_user_id", "sold_by","batch_no", "quantity", "rate", "mrp", "sold_at")
 VALUES
   (5, 2, (SELECT "id" FROM "user_details" WHERE "primary_contact_no" = '9090909090'),
-   (SELECT "id" FROM "user_details" WHERE "name" = 'Worker B'), 2, 250, CURRENT_TIMESTAMP),
+   (SELECT "id" FROM "user_details" WHERE "name" = 'Worker B'), 'BATCH-P5-A', 2, 225, 250, CURRENT_TIMESTAMP),
   (27, 2, (SELECT "id" FROM "user_details" WHERE "primary_contact_no" = '9090909090'),
-   (SELECT "id" FROM "user_details" WHERE "name" = 'Worker B'), 1, 200, CURRENT_TIMESTAMP);
+   (SELECT "id" FROM "user_details" WHERE "name" = 'Worker B'), 'BATCH-P27-C', 1, 180, 200, CURRENT_TIMESTAMP);
 
 -- Step 3: View the total cost
-SELECT SUM("rate") AS "total_price"
+SELECT COALESCE(SUM("quantity" * "rate"), 0) AS "total_price"
   FROM "sales"
  WHERE "buyer_user_id" = (
         SELECT "id" 
           FROM "user_details" 
          WHERE "primary_contact_no" = '9090909090'
         )
-   AND strftime('%d', "sold_at") = strftime('%d', 'now');
+    AND DATE("sold_at") = DATE('now');
 
 -- The customer says they can only pay ₹500 total.
 -- Reduce quantity of one product (Vitamin Tablets 2 -> 1) and remove one other item (Cough Syrup).
@@ -47,14 +47,14 @@ DELETE FROM "sales"
    AND "product_id" = 27;
 
 -- Step 3: View the total cost
-SELECT SUM("rate") AS "total_price"
+SELECT COALESCE(SUM("quantity" * "rate"), 0) AS "total_price"
   FROM "sales"
  WHERE "buyer_user_id" = (
         SELECT "id" 
           FROM "user_details" 
          WHERE "primary_contact_no" = '9090909090'
         )
-   AND strftime('%d', "sold_at") = strftime('%d', 'now');
+    AND DATE("sold_at") = DATE('now');
 
 -- =========================================================
 -- DELETE & SOFT DELETE OF A STAFF
